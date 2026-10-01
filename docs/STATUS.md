@@ -1,13 +1,14 @@
-# Overlyric — status (as of 2026-10-02, version 0.1.1)
+# Overlyric — status (as of 2026-10-02, version 0.1.2)
 
 ## Friend-install dry run (2026-10-02, on the dev Mac with app/settings/permissions wiped)
 - Gatekeeper: "Apple could not verify … free of malware" → Done → Open Anyway (expected without notarization).
 - Opening Overlyric **from inside the mounted DMG** keeps re-showing the block (approval can't be recorded on a
   read-only image) → users must drag it to Applications first, or use the move offer below.
-- **Bug (fixed in 0.1.1, not yet re-tested live):** "Move to Applications" copied the app WITH its quarantine
-  flag, so the relaunched copy was blocked/translocated and nothing ran; "Not Now" worked. 0.1.1 clears the
-  flag on the installed copy, reuses an identical-version copy, relaunches after the old process exits and
-  ejects the DMG.
+- **Bug (fixed in 0.1.1/0.1.2, not yet re-tested live):** "Move to Applications" copied the app WITH its
+  quarantine flag, so the relaunched copy was blocked/translocated and nothing ran; "Not Now" worked. Now the
+  installed copy has the flag cleared, an identical-version copy is reused, the app relaunches after the old
+  process exits, and the source DMG is ejected — also in the normal downloaded case where macOS runs a
+  translocated copy (0.1.2 finds the mounted volume carrying the same app + version).
 
 ## Shipped in 0.1.0
 - 10 lyric styles: Two Lines, One Line, Scrolling (teleprompter), Typewriter, Karaoke, Dynamic, Pop, Jump,

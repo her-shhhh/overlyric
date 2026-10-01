@@ -35,12 +35,29 @@ enum Onboarding {
             failed.runModal()
             return false
         }
-        // Started from a disk image: eject it once this copy has quit.
-        let volume = Bundle.main.bundlePath.hasPrefix("/Volumes/")
-            ? "/Volumes/" + (Bundle.main.bundlePath.dropFirst("/Volumes/".count).split(separator: "/").first.map(String.init) ?? "")
-            : nil
+        // Started from the downloaded disk image: eject it once this copy has quit.
+        let volume = sourceDiskImageVolume()
         // An older copy may still be running: it quits too, so the moved copy starts as the only one.
         return NSApp.relaunch(destination, quitting: otherInstances, thenEject: volume)
+    }
+
+    /// The mounted disk image this copy came from, if any. Opened straight from the image the path starts
+    /// with /Volumes; opened the usual downloaded way macOS runs a hidden translocated copy, so look for a
+    /// mounted volume that carries this same app (same bundle id and version) at its root.
+    private static func sourceDiskImageVolume() -> String? {
+        let path = Bundle.main.bundlePath
+        if path.hasPrefix("/Volumes/"), let name = path.dropFirst("/Volumes/".count).split(separator: "/").first {
+            return "/Volumes/" + name
+        }
+        guard path.contains("/AppTranslocation/") else { return nil }
+        let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? []
+        for v in volumes where v.path.hasPrefix("/Volumes/") {
+            let candidate = v.appendingPathComponent("Overlyric.app")
+            if Bundle(url: candidate)?.bundleIdentifier == Bundle.main.bundleIdentifier, isSameVersion(at: candidate) {
+                return v.path
+            }
+        }
+        return nil
     }
 
     /// Puts this version at `destination` (skipping the copy when the same version is already there) and

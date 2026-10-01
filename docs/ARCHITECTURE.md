@@ -68,11 +68,12 @@ captures without a grant), or **Artwork** (dominant vivid hue of the cover, brig
 would double moving lyrics).
 
 **Easter eggs** — sparkle words (stars/rain/fire/love/snow → particle flourish), shake the lyrics while
-dragging, the third play in a row, and an encore offer after the last line. ⌥-click the menu to switch
-them off.
+dragging, the third play in a row, and an encore offer after the last line. Hold ⌥ with the menu open —
+"Launch at Login" turns into the Easter Eggs switch.
 
 **Onboarding** — first launch shows a one-time hello in the overlay; running from a disk image or App
-Translocation offers to move the app to /Applications.
+Translocation offers to move the app to /Applications: it copies itself there (or reuses an identical
+version), clears the quarantine flag on the installed copy, relaunches from there and ejects the source DMG.
 
 ## Mouse & menu
 
