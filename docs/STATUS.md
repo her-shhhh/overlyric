@@ -40,6 +40,8 @@
 ## Verified
 - 50 unit tests (Core). Offscreen frame-by-frame QA of every style (tools/style-harness): no blockers or
   majors; pause freezes exactly in every style.
+- Live, 2026-10-02 (0.1.2, quarantined "downloaded" DMG): drag to Applications → blocked once → Open Anyway →
+  runs from /Applications; approval sticks (user-approved quarantine bit), lyrics load, Auto colour works.
 - Live, 2026-10-02 (0.1.1, downloaded-DMG install): Auto colour end-to-end — Screen Recording granted, colour
   flips bright↔deep with fresh random hues as dark/light windows pass behind the lyrics.
 - Live on macOS 26 (earlier builds): sync, track change, seek, pause/play, Spotify quit/relaunch, drag,
