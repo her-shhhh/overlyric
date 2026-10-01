@@ -121,6 +121,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(eggsItem)
         menu.addItem(.separator())
 
+        let guide = NSMenuItem(title: "Read This or Hum Forever…", action: #selector(openGuide), keyEquivalent: "")
+        guide.target = self
+        guide.image = NSImage(systemSymbolName: "book", accessibilityDescription: "Guide")
+        guide.toolTip = "The story, the setup and every control"
+        menu.addItem(guide)
+
         let quit = NSMenuItem(title: "Quit Overlyric", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -369,6 +375,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    /// Shows the guide (the story, the setup and every control) in its own window.
+    @objc private func openGuide() { GuideWindow.shared.show() }
 
     private static func swatch(_ color: NSColor) -> NSImage {
         NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
