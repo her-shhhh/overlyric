@@ -1,4 +1,10 @@
-# Overlyric — status (as of 2026-10-02, version 1.1.1)
+# Overlyric — status (as of 2026-10-02, version 1.1.2)
+
+## 1.1.2 (2026-10-02)
+- Menu › **Read This or Hum Forever…** opens the guide in its own designed window (app icon + title, real
+  headings, gold bullets/numbers, bold quoted warnings, light/dark, "Let's sing" + "View on GitHub"). It typesets
+  the same text that ships as the DMG's .txt (bundled by `scripts/render-readme.sh`, parsed by
+  `GuideDocument` in Core, tested). Verified by offscreen renders; not yet clicked live.
 
 ## 1.1.1 (2026-10-02)
 - Fresh installs start in **Jump** style with **Lemon** lyrics; both are first in their menus.
