@@ -138,9 +138,12 @@ URLSession completion → hop to main. All state mutation on main.
 5. **`isFloatingPanel = true` resets `level`** — set the level afterwards.
 6. **`performDrag(with:)` is a no-op** for a non-key panel of an inactive app; `isMovableByWindowBackground`
    + `mouseDownCanMoveWindow` is what actually drags the window.
-7. **Pinch delivery** to an inactive app's non-key panel is not guaranteed by AppKit docs. Three paths:
-   `NSMagnificationGestureRecognizer` on the view (hit-tested), a global `.magnify` monitor that zooms when the
-   pointer is over the lyrics even if the event went to the active app, and ⌘+scroll.
+7. **Pinch delivery** to an inactive app's non-key panel is not guaranteed by AppKit docs (the archived
+   gesture guide says gestures go "to the active application"). Three paths cover every routing:
+   `NSMagnificationGestureRecognizer` on the view (if the system routes the pinch to the window under the
+   pointer), a global `.magnify` monitor (NSEvent.h: global monitors receive copies of events posted to
+   *other* applications; only key events need Accessibility) that zooms when the pointer is over the lyrics,
+   and ⌘+scroll. The menu also has a live slider (14–160 pt) for precise sizing.
 8. **Never add a CAAnimation under the key `"transition"`.** That is `kCATransition`: CA then cross-fades
    the layer's whole previous rendering with the new one, which looked like a doubled, ghosted line.
 9. **Implicit actions** are disabled on line layers (`action(forKey:) → nil`), otherwise a redraw
