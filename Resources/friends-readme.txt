@@ -6,15 +6,13 @@ HOW THIS HAPPENED
 I always have music on while I work, and a song is twice as good when
 I can sing along. Today at the office, in one of those long "Claude is
 cooking, please wait" breaks, my songs were playing and I couldn't sing
-a single line. I never know the words. (Exhibit A: that Anuv Jain song,
-where I sang "baalon ke gaddhon mein tere" with my whole chest. It's
-"gaalon". You were there. You remember.) And Spotify's lyrics view
-would swallow half my tiny laptop screen. So, bored and armed with the
-shiny new Ultracode mode on Claude Fable, I thought: let's one-shot a
-fix. Reader, it was not one shot. It was hours of very dedicated
-"work". But Claude built its own karaoke machine for the breaks it
-gives me, and now the lyrics float right on my screen. My colleagues
-are thrilled.
+a single line. I never know the words, so it's confident humming and
+the odd made-up line. And Spotify's lyrics view would swallow half my
+tiny laptop screen. So, bored and armed with the shiny new Ultracode
+mode on Claude Fable, I thought: let's one-shot a fix. Reader, it was
+not one shot. It was hours of very dedicated "work". But Claude built
+its own karaoke machine for the breaks it gives me, and now the lyrics
+float right on my screen. My colleagues are thrilled.
 
 
 WHAT IT IS
