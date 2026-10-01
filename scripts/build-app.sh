@@ -16,9 +16,13 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-# Ad-hoc by default. Set OVERLYRIC_SIGN_ID to a self-signed code-signing identity for a signature that
-# stays stable across rebuilds (ad-hoc = cdhash-based, so every rebuild re-asks the Automation permission).
-SIGN_ID="${OVERLYRIC_SIGN_ID:--}"
+# Sign with the local "Overlyric Dev" self-signed identity when it exists (scripts/make-signing-identity.sh),
+# so the signature — and therefore the Automation and Screen Recording permissions, which macOS keys on
+# the designated requirement — stays stable across rebuilds. Ad-hoc signing changes identity every build.
+SIGN_ID="${OVERLYRIC_SIGN_ID:-}"
+if [ -z "$SIGN_ID" ]; then
+  if security find-certificate -c "Overlyric Dev" >/dev/null 2>&1; then SIGN_ID="Overlyric Dev"; else SIGN_ID="-"; fi
+fi
 echo "▸ codesign ($SIGN_ID)"
 codesign --force --sign "$SIGN_ID" --identifier com.harsh.overlyric \
   --entitlements Resources/Overlyric.entitlements "$APP"
