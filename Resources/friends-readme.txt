@@ -55,9 +55,11 @@ SET IT UP (2 minutes, once)
    behind the notch, right-click the lyrics instead (once a song is
    playing) - same menu.
 
-4. Play a song in Spotify. When macOS asks if Overlyric may control
-   Spotify (it may ask as soon as Overlyric starts), click Allow.
-   It only wants to know what you're playing. Judgement-free. Mostly.
+4. Overlyric opens Spotify for you. When macOS asks if Overlyric may
+   control Spotify, click Allow, and say hi to Coldplay: the very
+   first time, Overlyric plays you "Yellow". In yellow. Look at the
+   stars. After that it only wants to know what you're playing.
+   Judgement-free. Mostly.
 
 
 USE IT
@@ -65,8 +67,9 @@ USE IT
 - Drag the lyrics anywhere you like. Hold Cmd and scroll on them to
   make them bigger (for the chorus) or smaller (for meetings).
 - Click the lyrics to jump to Spotify. Right-click them for the menu.
-- Lyrics Style: 10 looks - Jump, Typewriter, Karaoke, Pop, Cube and
-  more. Try them all. Pick a favourite. Change your mind every song.
+- Lyrics Style: 10 looks - Dynamic, Jump, Typewriter, Karaoke, Cube
+  and more. Try them all. Pick a favourite. Change your mind every
+  song.
 - Lyrics Colour: pick one, or Auto (a fresh colour you can read on
   whatever is behind the lyrics; needs one more permission, see
   below), or Match album artwork.
@@ -86,9 +89,9 @@ ABOUT THE SCARY WARNINGS (why they appear, and why it's fine)
 - "Overlyric wants access to control Spotify": macOS words this very
   dramatically for any app that talks to another app. Overlyric only
   asks Spotify which song is playing and how far in it is. It never
-  touches your account, playlists or likes. (One exception: if you
-  click the "encore?" offer at the end of a song, it plays that song
-  again. You asked for it.)
+  touches your account, playlists or likes. (It does press play
+  twice: "Yellow" on its very first launch, to say hi, and the song
+  you just heard if you click the "encore?" offer at its end.)
 - "Screen Recording" (only if you turn on Lyrics Colour > Auto): it
   peeks at a tiny patch right behind the lyrics to pick a colour you
   can read. Nothing is saved or sent anywhere, and whatever macOS
