@@ -6,7 +6,8 @@
 - **Welcome song:** the very first launch plays Coldplay's "Yellow" once (`Onboarding.takeFirstSong`, key
   `overlyric.firstSongPlayed`). Opens Spotify in the background if it isn't running, waits up to 10 min for
   the Automation grant, then sends `play track` and re-sends (3 s apart, max 6) until Spotify reports it
-  playing. The guide and README say so. Not yet verified live (would play audio during testing).
+  playing. The guide and README say so. Verified live on the dev Mac (upgrade from 1.1.3): played on the first
+  try, "Yellow" playing ~1 s later with its 49 synced lines.
 
 ## 1.1.3 (2026-10-02)
 - Story in the guide and README no longer carries the friends-only Anuv Jain inside joke (the guide gets shared
