@@ -13,6 +13,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusTitleItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let statusDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let colorMenu = NSMenu(title: "Lyrics Colour")
+    private let autoItem = NSMenuItem(title: "Auto — contrast with what's behind", action: #selector(toggleAuto), keyEquivalent: "")
+    private let autoStatusItem = NSMenuItem(title: "", action: #selector(autoStatusClicked), keyEquivalent: "")
     private let lockItem = NSMenuItem(title: "Lock Position (click-through)", action: #selector(toggleLock), keyEquivalent: "")
     private let sizeSlider = NSSlider(value: Double(Settings.defaultFontSize), minValue: Double(Settings.minFontSize),
                                       maxValue: Double(Settings.maxFontSize), target: nil, action: nil)
@@ -45,6 +47,13 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let colorItem = NSMenuItem(title: "Lyrics Colour", action: nil, keyEquivalent: "")
+        colorMenu.autoenablesItems = false
+        autoItem.target = self
+        colorMenu.addItem(autoItem)
+        autoStatusItem.target = self
+        autoStatusItem.indentationLevel = 1
+        colorMenu.addItem(autoStatusItem)
+        colorMenu.addItem(.separator())
         for (i, preset) in ColorPreset.all.enumerated() {
             let it = NSMenuItem(title: preset.name, action: #selector(pickPreset(_:)), keyEquivalent: "")
             it.target = self
@@ -152,10 +161,24 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         statusDetailItem.title = status.detail
         statusDetailItem.isHidden = status.detail.isEmpty
         let current = settings.color.usingColorSpace(.sRGB)
+        let auto = settings.autoContrast
+        autoItem.state = auto ? .on : .off
         for it in colorMenu.items where it.tag < ColorPreset.all.count && !it.isSeparatorItem && it.action == #selector(pickPreset(_:)) {
             let preset = ColorPreset.all[it.tag].color.usingColorSpace(.sRGB)
-            it.state = (current != nil && preset != nil && Self.close(current!, preset!)) ? .on : .off
+            it.state = (!auto && current != nil && preset != nil && Self.close(current!, preset!)) ? .on : .off
         }
+        let autoStatus: (String, Bool)
+        switch (auto, controller.sampler.status) {
+        case (false, _): autoStatus = ("", false)
+        case (true, .needsPermission): autoStatus = ("Allow Screen Recording in System Settings…", true)
+        case (true, .needsRelaunch): autoStatus = ("Quit and reopen Overlyric to finish enabling", false)
+        case (true, .failed(let msg)): autoStatus = ("Can't read the screen (\(msg))", false)
+        case (true, .sampling): autoStatus = ("Reading the screen behind the lyrics", false)
+        case (true, .off): autoStatus = (BackgroundSampler.hasPermission ? "Starts when lyrics are showing" : "Allow Screen Recording in System Settings…", !BackgroundSampler.hasPermission)
+        }
+        autoStatusItem.title = autoStatus.0
+        autoStatusItem.isHidden = autoStatus.0.isEmpty
+        autoStatusItem.isEnabled = autoStatus.1
     }
 
     private static func close(_ a: NSColor, _ b: NSColor) -> Bool {
@@ -167,12 +190,23 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func toggleEnabled() { settings.enabled.toggle() }
     @objc private func toggleLock() { settings.clickThrough.toggle() }
 
+    @objc private func toggleAuto() {
+        settings.autoContrast.toggle()
+    }
+
+    @objc private func autoStatusClicked() {
+        controller.sampler.requestPermission()
+        BackgroundSampler.openSystemSettings()
+    }
+
     @objc private func pickPreset(_ sender: NSMenuItem) {
         guard ColorPreset.all.indices.contains(sender.tag) else { return }
+        if settings.autoContrast { settings.autoContrast = false }
         settings.color = ColorPreset.all[sender.tag].color
     }
 
     @objc private func customColor() {
+        if settings.autoContrast { settings.autoContrast = false }
         let panel = NSColorPanel.shared
         panel.showsAlpha = false
         panel.isContinuous = true
@@ -202,8 +236,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func zoomReset() { settings.fontSize = Settings.defaultFontSize }
 
     @objc private func resetPosition() {
-        settings.windowCenter = nil
-        controller.panel.moveCenter(to: nil)
+        settings.windowTop = nil
+        controller.panel.moveTop(to: nil)
     }
 
     @objc private func toggleLaunchAtLogin() {

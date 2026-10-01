@@ -8,6 +8,7 @@ import OverlyricCore
 final class LyricsController {
     let panel = OverlayPanel()
     let monitor = SpotifyMonitor()
+    private(set) lazy var sampler = BackgroundSampler(window: panel)
     private let service = LyricsService()
     private let settings = Settings.shared
     private var view: OverlayView { panel.overlayView }
@@ -32,14 +33,18 @@ final class LyricsController {
         view.fontSize = settings.fontSize
         view.color = settings.color
         view.onZoomEnded = { [weak self] size in self?.settings.fontSize = size }
-        panel.moveCenter(to: settings.windowCenter)
+        panel.moveTop(to: settings.windowTop)
         panel.ignoresMouseEvents = settings.clickThrough
+        sampler.onChoice = { [weak self] choice in
+            guard let self, self.settings.autoContrast else { return }
+            self.view.setColor(NSColor(srgbRed: choice.color.r, green: choice.color.g, blue: choice.color.b, alpha: 1), animated: true)
+        }
 
         NotificationCenter.default.addObserver(forName: .overlyricSettingsDidChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.applySettings() }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.panel.moveCenter(to: self?.settings.windowCenter) }
+            MainActor.assumeIsolated { self?.panel.moveTop(to: self?.settings.windowTop) }
         }
 
         monitor.onChange = { [weak self] in self?.playbackChanged() }
@@ -58,10 +63,26 @@ final class LyricsController {
 
     private func applySettings() {
         if view.fontSize != settings.fontSize { view.fontSize = settings.fontSize }
-        view.color = settings.color
         panel.ignoresMouseEvents = settings.clickThrough
         monitor.setActive(settings.enabled)
         refresh(force: true)
+        updateColorSource()
+    }
+
+    /// Manual colour, or the sampler's pick while auto-contrast is on and the overlay is visible.
+    private func updateColorSource() {
+        let auto = settings.autoContrast && visible
+        sampler.setEnabled(auto)
+        if settings.autoContrast {
+            if !BackgroundSampler.hasPermission { sampler.requestPermission() }
+            if let c = sampler.choice {
+                view.setColor(NSColor(srgbRed: c.color.r, green: c.color.g, blue: c.color.b, alpha: 1), animated: false)
+            } else {
+                view.setColor(settings.color, animated: false)   // until the first sample lands
+            }
+        } else {
+            view.setColor(settings.color, animated: false)
+        }
     }
 
     // MARK: Playback → lyrics
@@ -166,6 +187,7 @@ final class LyricsController {
         guard !visible else { return }
         visible = true
         panel.orderFrontRegardless()
+        if settings.autoContrast { updateColorSource() }
     }
 
     private func hide() {
@@ -173,6 +195,7 @@ final class LyricsController {
         visible = false
         panel.orderOut(nil)
         view.update(.empty, animated: false)
+        sampler.setEnabled(false)
     }
 
     // MARK: Menu status

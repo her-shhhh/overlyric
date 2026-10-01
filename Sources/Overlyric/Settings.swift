@@ -45,9 +45,14 @@ final class Settings {
         static let fontSize = "overlyric.fontSize"
         static let colorRGB = "overlyric.colorRGB"
         static let clickThrough = "overlyric.clickThrough"
+        static let topX = "overlyric.topX"
+        static let topY = "overlyric.topY"
+        static let hasTop = "overlyric.hasTop"
+        // Pre-top-anchor builds stored the window centre.
         static let centerX = "overlyric.centerX"
         static let centerY = "overlyric.centerY"
         static let hasCenter = "overlyric.hasCenter"
+        static let autoContrast = "overlyric.autoContrast"
     }
 
     var enabled: Bool {
@@ -67,14 +72,27 @@ final class Settings {
 
     var color: NSColor {
         get {
-            guard let c = d.array(forKey: Key.colorRGB) as? [Double], c.count == 3 else { return ColorPreset.all[0].color }
-            return NSColor(srgbRed: c[0], green: c[1], blue: c[2], alpha: 1)
+            // Tolerate numbers stored as strings (e.g. `defaults write … -array 1 0.89 0.4`).
+            let raw = d.array(forKey: Key.colorRGB) ?? []
+            let c = raw.compactMap { v -> Double? in
+                if let n = v as? NSNumber { return n.doubleValue }
+                if let s = v as? String { return Double(s) }
+                return nil
+            }
+            guard c.count == 3 else { return ColorPreset.all[0].color }
+            return NSColor(srgbRed: min(1, max(0, c[0])), green: min(1, max(0, c[1])), blue: min(1, max(0, c[2])), alpha: 1)
         }
         set {
-            let c = newValue.usingColorSpace(.sRGB) ?? newValue
+            guard let c = newValue.usingColorSpace(.sRGB) else { return }
             d.set([Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent)], forKey: Key.colorRGB)
             notify()
         }
+    }
+
+    /// Pick the lyric colour automatically from what is behind the overlay (needs Screen Recording).
+    var autoContrast: Bool {
+        get { d.bool(forKey: Key.autoContrast) }
+        set { d.set(newValue, forKey: Key.autoContrast); notify() }
     }
 
     var clickThrough: Bool {
@@ -82,18 +100,24 @@ final class Settings {
         set { d.set(newValue, forKey: Key.clickThrough); notify() }
     }
 
-    /// Centre of the overlay window in screen coordinates (stable under content resizing).
-    var windowCenter: NSPoint? {
+    /// Top-centre of the overlay window in screen coordinates (the anchor that stays put as lines wrap).
+    var windowTop: NSPoint? {
         get {
-            guard d.bool(forKey: Key.hasCenter) else { return nil }
-            return NSPoint(x: d.double(forKey: Key.centerX), y: d.double(forKey: Key.centerY))
+            if d.bool(forKey: Key.hasTop) {
+                return NSPoint(x: d.double(forKey: Key.topX), y: d.double(forKey: Key.topY))
+            }
+            if d.bool(forKey: Key.hasCenter) {   // migrate an old centre: assume a two-line block
+                return NSPoint(x: d.double(forKey: Key.centerX), y: d.double(forKey: Key.centerY) + 60)
+            }
+            return nil
         }
         set {
             if let p = newValue {
-                d.set(Double(p.x), forKey: Key.centerX)
-                d.set(Double(p.y), forKey: Key.centerY)
-                d.set(true, forKey: Key.hasCenter)
+                d.set(Double(p.x), forKey: Key.topX)
+                d.set(Double(p.y), forKey: Key.topY)
+                d.set(true, forKey: Key.hasTop)
             } else {
+                d.set(false, forKey: Key.hasTop)
                 d.set(false, forKey: Key.hasCenter)
             }
         }

@@ -4,9 +4,9 @@ import AppKit
 final class OverlayPanel: NSPanel, NSWindowDelegate {
     let overlayView = OverlayView()
     private var suppressMoveSave = false
-    /// The centre the user chose. Content re-sizing is anchored here, so a window pushed off an edge and
-    /// clamped back never "ratchets" away from that edge.
-    private var anchorCenter: NSPoint?
+    /// The top-centre the user chose. Content re-sizing is anchored here, so the current line's top stays
+    /// put while lines wrap/unwrap below it, and a window clamped at a screen edge never "ratchets" away.
+    private var anchorTop: NSPoint?
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 420, height: 120),
@@ -33,34 +33,34 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    /// Resizes the window so the content view is `size`, keeping the anchor centre fixed and on screen.
-    func setContentSizeKeepingCenter(_ size: NSSize) {
-        let c = anchorCenter ?? centerPoint
-        var nf = NSRect(x: c.x - size.width / 2, y: c.y - size.height / 2, width: size.width, height: size.height)
-        nf = Self.clamp(nf, to: screenFor(point: c))
+    /// Resizes the window so the content view is `size`, keeping the anchor top-centre fixed and on screen.
+    func setContentSizeKeepingTop(_ size: NSSize) {
+        let t = anchorTop ?? topPoint
+        var nf = NSRect(x: t.x - size.width / 2, y: t.y - size.height, width: size.width, height: size.height)
+        nf = Self.clamp(nf, to: screenFor(point: t))
         guard nf != frame else { return }
         suppressMoveSave = true
         setFrame(nf, display: false, animate: false)   // the layer transaction that follows draws it
         suppressMoveSave = false
     }
 
-    /// Moves the window so its centre is at `center` (or the default subtitle position).
-    func moveCenter(to center: NSPoint?) {
-        let target = center ?? Self.defaultCenter()
-        anchorCenter = target
+    /// Moves the window so its top-centre is at `top` (or the default subtitle position).
+    func moveTop(to top: NSPoint?) {
+        let target = top ?? Self.defaultTop()
+        anchorTop = target
         var nf = frame
-        nf.origin = NSPoint(x: target.x - nf.width / 2, y: target.y - nf.height / 2)
+        nf.origin = NSPoint(x: target.x - nf.width / 2, y: target.y - nf.height)
         nf = Self.clamp(nf, to: screenFor(point: target))
         suppressMoveSave = true
         setFrame(nf, display: true, animate: false)
         suppressMoveSave = false
     }
 
-    var centerPoint: NSPoint { NSPoint(x: frame.midX, y: frame.midY) }
+    var topPoint: NSPoint { NSPoint(x: frame.midX, y: frame.maxY) }
 
-    static func defaultCenter() -> NSPoint {
+    static func defaultTop() -> NSPoint {
         let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        return NSPoint(x: vf.midX, y: vf.minY + vf.height * 0.16)
+        return NSPoint(x: vf.midX, y: vf.minY + vf.height * 0.16 + 70)
     }
 
     private func screenFor(point: NSPoint) -> NSScreen? {
@@ -89,7 +89,7 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
         guard !suppressMoveSave else { return }
         // Only persist drags by the user, not the system relocating us when a display disconnects.
         guard NSEvent.pressedMouseButtons & 1 != 0 else { return }
-        anchorCenter = centerPoint
-        Settings.shared.windowCenter = centerPoint
+        anchorTop = topPoint
+        Settings.shared.windowTop = topPoint
     }
 }

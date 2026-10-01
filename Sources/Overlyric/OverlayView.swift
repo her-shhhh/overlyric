@@ -57,6 +57,19 @@ final class OverlayView: NSView {
     /// Called at the end of a pinch gesture with the final size (for persistence).
     var onZoomEnded: ((CGFloat) -> Void)?
 
+    /// Changes the colour with a short cross-fade (used by auto-contrast so switches feel calm).
+    func setColor(_ c: NSColor, animated: Bool) {
+        guard c != color else { return }
+        if animated, window?.isVisible == true {
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.45
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            root.add(fade, forKey: "colorFade")
+        }
+        color = c
+    }
+
     private(set) var content: Content = .empty
     private var pinchStartSize: CGFloat = 0
     private var globalPinchMonitor: Any?
@@ -68,12 +81,16 @@ final class OverlayView: NSView {
     private static let padding: CGFloat = 20
     private static let nextAlpha: Float = 0.55
     private static let nextScale: CGFloat = 0.86
-    private static let duration: TimeInterval = 0.5
+    private static let duration: TimeInterval = 0.42
     private static let timing = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+    private var layoutGeneration = 0
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         root.masksToBounds = false
+        // No implicit animations on the root: adding/removing the ghost sublayer would otherwise trigger
+        // CA's default 0.25 s fade of the whole layer tree (that was the "doubled text" glitch).
+        root.actions = ["sublayers": NSNull(), "contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
         layer = root                 // layer-hosting: we own the sublayer tree
         wantsLayer = true
         root.addSublayer(nextLayer)
@@ -120,13 +137,15 @@ final class OverlayView: NSView {
 
     // MARK: Interaction
 
-    /// The whole window rect is the grab area. Dragging is handled by the window server through
-    /// `isMovableByWindowBackground` + `mouseDownCanMoveWindow` (verified: `performDrag` does nothing
-    /// for a non-key panel of an inactive app).
+    /// Only the lyric text (with a comfortable margin) is the grab area, not the transparent padding.
+    /// Dragging is handled by the window server through `isMovableByWindowBackground` +
+    /// `mouseDownCanMoveWindow` (verified: `performDrag` does nothing for a non-key panel of an inactive app).
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = superview.map { convert(point, from: $0) } ?? point
-        return bounds.contains(local) ? self : nil
+        return grabRect.contains(local) ? self : nil
     }
+
+    private var grabRect: NSRect = .zero
 
     override var mouseDownCanMoveWindow: Bool { true }
 
@@ -198,6 +217,8 @@ final class OverlayView: NSView {
         var current: NSRect
         var next: NSRect
         var showNext: Bool
+        /// Visual extent of the text (current + scaled next), for hit-testing.
+        var textRect: NSRect
     }
 
     private func wrapWidth() -> CGFloat {
@@ -226,7 +247,8 @@ final class OverlayView: NSView {
             currentLayer.attributedText = styled("", .current)
         case .lines(let c, let n):
             currentLayer.attributedText = styled(Self.displayText(c), .current)
-            if let n {
+            // A gap (♪) is only shown as the current line, never previewed as "next".
+            if let n, !n.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 nextLayer.attributedText = styled(Self.displayText(n), .next)
                 showNext = true
             }
@@ -234,14 +256,19 @@ final class OverlayView: NSView {
             currentLayer.attributedText = styled(s, .note)
         }
 
+        // The next layer is drawn at full size and scaled by `nextScale`, so it is measured at the
+        // wider unscaled width; its visual width then equals W.
+        let WN = W / Self.nextScale
         let hC = Self.measuredHeight(currentLayer.attributedText, width: W)
-        let hN = showNext ? Self.measuredHeight(nextLayer.attributedText, width: W) : 0
-        let visualN = hN * Self.nextScale          // the next layer is drawn scaled about its centre
+        let hN = showNext ? Self.measuredHeight(nextLayer.attributedText, width: WN) : 0
+        let visualN = hN * Self.nextScale
         // `next` is the UNscaled box positioned so its scaled image sits flush at the bottom padding.
-        let next = NSRect(x: P, y: P + visualN / 2 - hN / 2, width: W, height: hN)
+        let next = NSRect(x: P + (W - WN) / 2, y: P + visualN / 2 - hN / 2, width: WN, height: hN)
         let current = NSRect(x: P, y: P + (showNext ? visualN + gap : 0), width: W, height: hC)
         let height = P + hC + (showNext ? gap + visualN : 0) + P
-        return Layout(size: NSSize(width: ceil(W + 2 * P), height: ceil(height)), current: current, next: next, showNext: showNext)
+        let textRect = NSRect(x: P, y: P, width: W, height: height - 2 * P)
+        return Layout(size: NSSize(width: ceil(W + 2 * P), height: ceil(height)), current: current, next: next,
+                      showNext: showNext, textRect: textRect)
     }
 
     private static func displayText(_ s: String?) -> String {
@@ -257,6 +284,8 @@ final class OverlayView: NSView {
     }
 
     private func relayout(animated: Bool) {
+        layoutGeneration += 1
+        let generation = layoutGeneration
         let oldCurrentText = currentLayer.attributedText
         // If a transition is still running, start from where the lines visibly are, not their model slots.
         let inFlight = currentLayer.animation(forKey: "lineTransition") != nil
@@ -264,11 +293,21 @@ final class OverlayView: NSView {
         let oldNextFrame = (inFlight ? nextLayer.presentation() : nil)?.frameIgnoringTransform ?? nextLayer.frameIgnoringTransform
         let oldNextVisible = !nextLayer.isHidden && nextLayer.opacity > 0
         let oldOrigin = window?.frame.origin ?? .zero
+        let oldSize = bounds.size
 
         let L = assignTextAndMeasure()
-        (window as? OverlayPanel)?.setContentSizeKeepingCenter(L.size)
+        let animating = animated && window?.isVisible == true
+        // While a transition plays, never shrink the window: the outgoing lines need the room. The window
+        // is anchored at its top-centre, so content hugs the top and only the empty bottom is deferred.
+        let shown = animating
+            ? NSSize(width: max(L.size.width, oldSize.width), height: max(L.size.height, oldSize.height))
+            : L.size
+        let offset = NSPoint(x: (shown.width - L.size.width) / 2, y: shown.height - L.size.height)
+        (window as? OverlayPanel)?.setContentSizeKeepingTop(shown)
         applyShadows()
         let newOrigin = window?.frame.origin ?? .zero
+        grabRect = L.textRect.offsetBy(dx: offset.x, dy: offset.y).insetBy(dx: -10, dy: -8)
+        window?.invalidateCursorRects(for: self)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -277,35 +316,43 @@ final class OverlayView: NSView {
         currentLayer.removeAllAnimations()
         nextLayer.removeAllAnimations()
         nextLayer.isHidden = !L.showNext
-        place(currentLayer, in: L.current)
-        place(nextLayer, in: L.next, scale: Self.nextScale)
+        let current = L.current.offsetBy(dx: offset.x, dy: offset.y)
+        let next = L.next.offsetBy(dx: offset.x, dy: offset.y)
+        place(currentLayer, in: current)
+        place(nextLayer, in: next, scale: Self.nextScale)
         currentLayer.opacity = 1
         nextLayer.opacity = Self.nextAlpha
-        CATransaction.commit()
 
-        guard animated, window?.isVisible == true else { return }
+        guard animating else { CATransaction.commit(); return }
 
         // The window moved/resized, so old content shifted by the window-origin delta in our coordinates.
         let dx = oldOrigin.x - newOrigin.x
         let dy = oldOrigin.y - newOrigin.y
-        let travel = fontSize * 0.6
+        let travel = fontSize * 0.45
 
-        // 1. The old current line drifts up and fades out.
+        // 1. The old current line drifts up and fades out (inserted inside the no-actions transaction).
+        var ghost: LineLayer?
+        var ghostStart = NSRect.zero
         if let oldCurrentText, oldCurrentText.length > 0 {
-            let ghost = LineLayer()
-            ghost.attributedText = oldCurrentText
-            ghost.contentsScale = currentLayer.contentsScale
-            copyShadow(from: currentLayer, to: ghost)
-            root.insertSublayer(ghost, below: nextLayer)
-            ghosts.append(ghost)
-            let start = oldCurrentFrame.offsetBy(dx: dx, dy: dy)
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            place(ghost, in: start)
-            CATransaction.commit()
-            animate(ghost, from: (start.center, 1, 1),
-                    to: (CGPoint(x: start.midX, y: start.midY + travel), 0.94, 0)) { [weak self, weak ghost] in
+            let g = LineLayer()
+            g.attributedText = oldCurrentText
+            g.contentsScale = currentLayer.contentsScale
+            copyShadow(from: currentLayer, to: g)
+            root.insertSublayer(g, below: nextLayer)
+            ghosts.append(g)
+            ghostStart = oldCurrentFrame.offsetBy(dx: dx, dy: dy)
+            place(g, in: ghostStart)
+            ghost = g
+        }
+        CATransaction.commit()
+
+        if let ghost {
+            animate(ghost, from: (ghostStart.center, 1, 1),
+                    to: (CGPoint(x: ghostStart.midX, y: ghostStart.midY + travel), 0.94, 0)) { [weak self, weak ghost] in
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
                 ghost?.removeFromSuperlayer()
+                CATransaction.commit()
                 if let ghost { self?.ghosts.removeAll { $0 === ghost } }
             }
         }
@@ -313,14 +360,41 @@ final class OverlayView: NSView {
         // 2. The next line rises into the current slot, growing and brightening.
         let riseFrom: CGPoint = oldNextVisible
             ? oldNextFrame.offsetBy(dx: dx, dy: dy).center
-            : CGPoint(x: L.current.midX, y: L.current.midY - travel)
-        animate(currentLayer, from: (riseFrom, Self.nextScale, Self.nextAlpha), to: (L.current.center, 1, 1))
+            : CGPoint(x: current.midX, y: current.midY - travel)
+        animate(currentLayer, from: (riseFrom, Self.nextScale, Self.nextAlpha), to: (current.center, 1, 1))
 
         // 3. The new next line fades in from just below its slot.
         if L.showNext {
-            animate(nextLayer, from: (CGPoint(x: L.next.midX, y: L.next.midY - travel * 0.7), Self.nextScale * 0.92, 0),
-                    to: (L.next.center, Self.nextScale, Self.nextAlpha))
+            animate(nextLayer, from: (CGPoint(x: next.midX, y: next.midY - travel * 0.7), Self.nextScale * 0.92, 0),
+                    to: (next.center, Self.nextScale, Self.nextAlpha))
         }
+
+        // 4. Once the transition is over, drop the deferred empty space (no visual change: content hugs the top).
+        if shown != L.size {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration + 0.05) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.layoutGeneration == generation else { return }
+                    self.settle(to: L, from: offset)
+                }
+            }
+        }
+    }
+
+    /// Shrinks the window to the exact content size after a transition, shifting layers so nothing moves on screen.
+    private func settle(to L: Layout, from offset: NSPoint) {
+        (window as? OverlayPanel)?.setContentSizeKeepingTop(L.size)
+        grabRect = L.textRect.insetBy(dx: -10, dy: -8)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for g in ghosts { g.removeFromSuperlayer() }
+        ghosts.removeAll()
+        currentLayer.removeAllAnimations()
+        nextLayer.removeAllAnimations()
+        place(currentLayer, in: L.current)
+        place(nextLayer, in: L.next, scale: Self.nextScale)
+        currentLayer.opacity = 1
+        nextLayer.opacity = Self.nextAlpha
+        CATransaction.commit()
     }
 
     private func place(_ layer: CALayer, in frame: NSRect, scale: CGFloat = 1) {

@@ -193,6 +193,8 @@ final class SpotifyMonitor {
         if trackChanged || playChanged {
             Log.spotify.notice("state: \(playing ? "playing" : "paused", privacy: .public) \(track?.name ?? "-", privacy: .public) @\(position, privacy: .public) (poll=\(fromPoll, privacy: .public))")
             reschedule()
+        } else {
+            Log.spotify.notice("resync: Δ=\(String(format: "%.2f", drift), privacy: .public)s → @\(String(format: "%.2f", position), privacy: .public) (poll=\(fromPoll, privacy: .public))")
         }
         onChange?()
     }

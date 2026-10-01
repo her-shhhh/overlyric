@@ -16,6 +16,7 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("ScriptingBridge"),
+                .linkedFramework("ScreenCaptureKit"),
             ]
         ),
         .testTarget(name: "OverlyricCoreTests", dependencies: ["OverlyricCore"], path: "Tests/OverlyricCoreTests"),
