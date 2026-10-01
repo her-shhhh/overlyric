@@ -2,8 +2,15 @@
 
 ## Friend-install dry run (2026-10-02, on the dev Mac with app/settings/permissions wiped)
 - Gatekeeper: "Apple could not verify … free of malware" → Done → Open Anyway (expected without notarization).
-- Opening Overlyric **from inside the mounted DMG** keeps re-showing the block (approval can't be recorded on a
-  read-only image) → users must drag it to Applications first, or use the move offer below.
+- **In-DMG Gatekeeper loop (re-confirmed 2026-10-02 ~01:45):** double-clicking Overlyric **inside the mounted
+  DMG window** shows "“Overlyric” Not Opened — Apple could not verify…" with only a **Done** button, every
+  time, even after an earlier Open Anyway: Gatekeeper approval doesn't stick for an app run from a read-only
+  disk image (each launch is translocated again). Harsh got stuck in this loop.
+  **Reliable path:** drag Overlyric from the DMG window onto Applications → open it from /Applications →
+  Done → System Settings › Privacy & Security › **Open Anyway** (once). The move offer below only helps on a
+  launch from the DMG that Gatekeeper lets through.
+- The DMG's `Read me first.txt` (written by `scripts/release.sh`) still suggests "just double-click Overlyric
+  here" as an alternative to dragging — that leads into the loop; remove it in the next release.
 - **Bug (fixed in 0.1.1/0.1.2, not yet re-tested live):** "Move to Applications" copied the app WITH its
   quarantine flag, so the relaunched copy was blocked/translocated and nothing ran; "Not Now" worked. Now the
   installed copy has the flag cleared, an identical-version copy is reused, the app relaunches after the old
@@ -38,14 +45,16 @@
   runtime, macOS 14/15.
 
 ## Open decisions
-- **Gatekeeper warning** ("Apple could not verify … free of malware") appears for every non-notarized
-  download. Options: (a) Developer ID + notarization — needs an Apple Developer account ($99/yr, or a
-  Developer ID cert from an existing team); `release.sh` already supports `OVERLYRIC_SIGN_ID` +
-  `NOTARY_PROFILE`; (b) free one-line Terminal installer (curl-downloaded files aren't quarantined → no
-  warning) — needs a public download URL; (c) both.
-- **Styled DMG window** (background arrow, icon layout) — free; build the Finder layout without scripting
-  Finder (e.g. dmgbuild) so no permission prompts.
-- Version number for the friends release (0.1.0 → 1.0.0?).
+1. **Gatekeeper warning** ("Apple could not verify … free of malware") appears for every non-notarized
+   download. Options: (a) Developer ID + notarization — needs an Apple Developer account ($99/yr, or a
+   Developer ID cert from an existing team); `release.sh` already supports `OVERLYRIC_SIGN_ID` +
+   `NOTARY_PROFILE`; (b) free one-line Terminal installer (curl-downloaded files aren't quarantined → no
+   warning) — needs a public download URL; (c) both.
+2. **Package for friends to avoid the in-DMG loop:** (a) ship a .zip instead of a DMG (Safari auto-extracts
+   to Downloads, a writable place, so Open Anyway sticks and the app's own "Move to Applications" offer
+   finishes the install) or (b) a styled DMG with a big drag-to-Applications arrow (dmgbuild, no Finder
+   scripting); notarization (decision 1) removes the problem entirely.
+3. Version number for the friends release (0.1.x → 1.0.0?).
 
 ## Known polish items (from QA, not applied)
 - Two Lines: outgoing line disappears in ~65 ms (needs window headroom during a change to scroll away).
