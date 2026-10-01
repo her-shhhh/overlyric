@@ -45,6 +45,11 @@ final class OverlayView: NSView {
     var onResizeEnded: ((CGFloat) -> Void)?
     var onShake: (() -> Void)?
 
+    /// Lock Position: every click passes through to what's underneath.
+    var locked = false {
+        didSet { updateMouseGate() }
+    }
+
     // MARK: State
 
     private(set) var content: StyleContent = .empty
@@ -54,6 +59,11 @@ final class OverlayView: NSView {
     private(set) var renderer: StyleRenderer = LyricsStyle.classic.makeRenderer()
     private var layoutGeneration = 0
     private var blockSize: CGSize = .zero
+    /// Where the words are (view coordinates). Only this area takes the mouse; the transparent padding
+    /// around it lets clicks fall through to whatever is underneath.
+    private var interactiveRect: NSRect = .zero
+    private var pointerMonitor: Any?
+    private var gateArea: NSTrackingArea?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -67,6 +77,21 @@ final class OverlayView: NSView {
     required init?(coder: NSCoder) { fatalError("not supported") }
 
     override var isOpaque: Bool { false }
+
+    deinit {
+        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, pointerMonitor == nil else { return }
+        // While the window ignores the mouse, pointer moves go to other apps: watch them (no permission
+        // needed for mouse-moved) to notice the pointer arriving over the words.
+        pointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            self?.updateMouseGate()
+        }
+        updateMouseGate()
+    }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
@@ -127,6 +152,9 @@ final class OverlayView: NSView {
 
     private func place(blockSize: CGSize, padding P: CGFloat) {
         let windowSize = NSSize(width: ceil(blockSize.width + 2 * P), height: ceil(blockSize.height + 2 * P))
+        interactiveRect = NSRect(x: (windowSize.width - self.blockSize.width) / 2 - 8,
+                                 y: windowSize.height - P - self.blockSize.height - 8,
+                                 width: self.blockSize.width + 16, height: self.blockSize.height + 16)
         if let panel = window as? OverlayPanel {
             panel.overhang = max(0, P - 6)
             panel.setContentSizeKeepingCurrentTop(windowSize)
@@ -136,14 +164,37 @@ final class OverlayView: NSView {
         stage.frame = CGRect(origin: .zero, size: windowSize)
         renderer.layer.position = CGPoint(x: windowSize.width / 2, y: windowSize.height - P)
         CATransaction.commit()
+        updateTrackingAreas()
+        updateMouseGate()
     }
+
+    // MARK: Mouse gate
+
+    /// Takes the mouse only while the pointer is over the words (and never when locked).
+    func updateMouseGate() {
+        guard let window else { return }
+        let onScreen = window.convertToScreen(convert(interactiveRect, to: nil))
+        let ignore = locked || !window.isVisible || !onScreen.contains(NSEvent.mouseLocation)
+        if window.ignoresMouseEvents != ignore { window.ignoresMouseEvents = ignore }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let gateArea { removeTrackingArea(gateArea) }
+        let area = NSTrackingArea(rect: interactiveRect, options: [.mouseEnteredAndExited, .activeAlways], owner: self)
+        addTrackingArea(area)
+        gateArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { updateMouseGate() }
+    override func mouseExited(with event: NSEvent) { updateMouseGate() }
 
     // MARK: Interaction
 
-    /// The whole overlay is interactive.
+    /// Only the words are interactive.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = superview.map { convert(point, from: $0) } ?? point
-        return bounds.contains(local) ? self : nil
+        return interactiveRect.contains(local) ? self : nil
     }
 
     override var mouseDownCanMoveWindow: Bool { false }

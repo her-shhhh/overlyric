@@ -447,9 +447,9 @@ private func revealTiming(_ st: LyricsState, _ i: Int, characters: Int, perChara
             var rowWidth: CGFloat = 0
             var rowHeight: CGFloat = 0
             for w in words {
-                let l = makeTextLayer(ctx) { $0.layout(w, size: size, weight: weight, width: 10_000) }
-                let ink = Self.inkWidth(l.layout!)
-                l.bounds = CGRect(x: 0, y: 0, width: ink, height: l.layout!.size.height)
+                // Measure unwrapped, then lay the word out at exactly that width so the layer is tight.
+                let ink = Self.inkWidth(ctx.layout(w, size: size, weight: weight, width: 10_000)) + 2
+                let l = makeTextLayer(ctx) { $0.layout(w, size: size, weight: weight, width: ink) }
                 layers.append((l, ink))
                 rowWidth += ink
                 rowHeight = max(rowHeight, l.bounds.height)
@@ -457,9 +457,6 @@ private func revealTiming(_ st: LyricsState, _ i: Int, characters: Int, perChara
             rowWidth += space * CGFloat(max(0, words.count - 1))
             var x = -rowWidth / 2
             for (k, (l, ink)) in layers.enumerated() {
-                // A text layer drawn at width 10 000 centres its glyphs; shift so the ink starts at x.
-                let inset = (l.layout!.width - ink) / 2
-                l.bounds = CGRect(x: inset, y: 0, width: ink, height: l.bounds.height)
                 l.anchorPoint = CGPoint(x: 0.5, y: 1)
                 l.position = CGPoint(x: x + ink / 2, y: -y)
                 b.addSublayer(l)

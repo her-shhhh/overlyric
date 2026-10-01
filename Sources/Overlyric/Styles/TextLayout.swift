@@ -45,47 +45,75 @@ final class TextLayout {
         CGRect(x: r.minX, y: size.height - r.maxY, width: r.width, height: r.height)
     }
 
-    /// Visual lines in reading order.
-    lazy var fragments: [Fragment] = {
-        var out: [Fragment] = []
+    // Geometry uses the typeset positions (line-fragment used rects and glyph locations). Glyph bounding
+    // boxes are NOT used: for complex scripts such as Devanagari they are several times wider than the
+    // text actually is.
+
+    /// x (TextKit coordinates) of glyph `g`'s origin.
+    private func glyphX(_ g: Int) -> CGFloat {
+        manager.lineFragmentRect(forGlyphAt: g, effectiveRange: nil).minX + manager.location(forGlyphAt: g).x
+    }
+
+    private func glyph(forCharacter c: Int) -> Int { manager.glyphIndexForCharacter(at: c) }
+
+    /// Caret x (TextKit coordinates) after character `c` within fragment `f`.
+    private func caretX(after c: Int, in f: (used: CGRect, chars: NSRange)) -> CGFloat {
+        let next = NSMaxRange((string.string as NSString).rangeOfComposedCharacterSequence(at: c))
+        if next < NSMaxRange(f.chars) {
+            let x = glyphX(glyph(forCharacter: next))
+            return min(max(x, f.used.minX), f.used.maxX)
+        }
+        return f.used.maxX
+    }
+
+    /// TextKit-space fragments: used rect + character range.
+    private lazy var rawFragments: [(used: CGRect, chars: NSRange)] = {
+        var out: [(CGRect, NSRange)] = []
         let glyphs = manager.glyphRange(for: container)
         manager.enumerateLineFragments(forGlyphRange: glyphs) { _, usedRect, _, glyphRange, _ in
-            let chars = self.manager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
-            let ink = self.manager.boundingRect(forGlyphRange: glyphRange, in: self.container)
-            let rect = CGRect(x: ink.minX, y: usedRect.minY, width: ink.width, height: usedRect.height)
-            out.append(Fragment(rect: self.toLayer(rect), characterRange: chars))
+            var chars = self.manager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+            // Trailing whitespace/newlines are not part of the visible line.
+            let ns = self.string.string as NSString
+            while chars.length > 0, let u = UnicodeScalar(ns.character(at: NSMaxRange(chars) - 1)),
+                  CharacterSet.whitespacesAndNewlines.contains(u) { chars.length -= 1 }
+            out.append((usedRect, chars))
         }
         return out
     }()
 
-    /// Words (runs of non-whitespace) with their glyph rects.
+    /// Visual lines in reading order.
+    lazy var fragments: [Fragment] = rawFragments.map { f in
+        Fragment(rect: toLayer(f.used), characterRange: f.chars)
+    }
+
+    /// Words (runs of non-whitespace) with their rects.
     lazy var words: [Word] = {
         let ns = string.string as NSString
         var out: [Word] = []
         let regex = try! NSRegularExpression(pattern: #"\S+"#)
         for m in regex.matches(in: string.string, range: NSRange(location: 0, length: ns.length)) {
-            let glyphs = manager.glyphRange(forCharacterRange: m.range, actualCharacterRange: nil)
-            let r = manager.boundingRect(forGlyphRange: glyphs, in: container)
-            // Use the full line height so words of one visual line share a baseline box.
-            var lineRect = manager.lineFragmentUsedRect(forGlyphAt: glyphs.location, effectiveRange: nil)
-            lineRect.origin.x = r.minX
-            lineRect.size.width = r.width
-            out.append(Word(text: ns.substring(with: m.range), rect: toLayer(lineRect), characterRange: m.range))
+            guard let f = rawFragments.first(where: { NSLocationInRange(m.range.location, $0.chars) }) else { continue }
+            let a = glyphX(glyph(forCharacter: m.range.location))
+            let b = caretX(after: NSMaxRange(m.range) - 1, in: f)
+            let x0 = min(a, b), x1 = max(a, b)
+            let r = CGRect(x: x0, y: f.used.minY, width: max(1, x1 - x0), height: f.used.height)
+            out.append(Word(text: ns.substring(with: m.range), rect: toLayer(r), characterRange: m.range))
         }
         return out
     }()
 
-    /// x positions (layer coordinates) of the right edge of each character within its fragment, used for
-    /// a character-by-character reveal. Returned per fragment: [(fragmentIndex, rightEdgeX)] in order.
+    /// Right edge (layer coordinates) after each character, per fragment, for a character-by-character
+    /// reveal. Monotonic within a fragment.
     lazy var characterStops: [(fragment: Int, x: CGFloat)] = {
         var stops: [(Int, CGFloat)] = []
-        for (fi, f) in fragments.enumerated() {
-            var c = f.characterRange.location
-            while c < NSMaxRange(f.characterRange) {
-                let range = (string.string as NSString).rangeOfComposedCharacterSequence(at: c)
-                let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-                let r = manager.boundingRect(forGlyphRange: glyphs, in: container)
-                stops.append((fi, max(r.maxX, f.rect.minX)))
+        let ns = string.string as NSString
+        for (fi, f) in rawFragments.enumerated() {
+            var c = f.chars.location
+            var last = f.used.minX
+            while c < NSMaxRange(f.chars) {
+                let range = ns.rangeOfComposedCharacterSequence(at: c)
+                last = max(last, caretX(after: c, in: f))
+                stops.append((fi, last))
                 c = NSMaxRange(range)
             }
         }
@@ -130,8 +158,10 @@ final class TextLayer: CALayer {
 
     override func action(forKey event: String) -> CAAction? { nil }
 
+    /// Glyphs are drawn at their layout coordinates (a non-zero bounds origin crops, it never shifts).
     override func draw(in ctx: CGContext) {
-        layout?.draw(in: ctx, bounds: bounds)
+        guard let layout else { return }
+        layout.draw(in: ctx, bounds: CGRect(origin: .zero, size: layout.size))
     }
 }
 

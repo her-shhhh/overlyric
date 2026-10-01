@@ -172,8 +172,8 @@ struct LinePair {
 
 // MARK: - Cube
 
-/// One line on the face of a cube; on a line change the cube rolls up: the old face tips away over the
-/// top while the new face comes up from below, in 3D perspective.
+/// One line on the face of a cube; on a line change the cube rolls upwards: the old face tips back and away
+/// over the top while the next face comes up from below, in 3D perspective.
 @MainActor final class CubeRenderer: BaseRenderer, StyleRenderer {
     private var current: TextLayer?
     private var outgoing: [TextLayer] = []
@@ -241,12 +241,12 @@ struct LinePair {
             CATransaction.commit()
         }
         if let leaving {
-            roll(leaving, from: 0, to: .pi / 2, fromAlpha: 1, toAlpha: 0.2) { [weak self, weak leaving] in
+            roll(leaving, from: 0, to: -.pi / 2, fromAlpha: 1, toAlpha: 0.2) { [weak self, weak leaving] in
                 guard let self, let leaving else { return }
                 self.forget(leaving); self.outgoing.removeAll { $0 === leaving }
             }
         }
-        roll(cur, from: -.pi / 2, to: 0, fromAlpha: 0.2, toAlpha: 1)
+        roll(cur, from: .pi / 2, to: 0, fromAlpha: 0.2, toAlpha: 1)
         return size
     }
 

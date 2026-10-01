@@ -57,7 +57,7 @@ final class LyricsController {
             self.monitor.restart(trackID: id)
         }
         panel.moveTop(to: settings.windowTop)
-        panel.ignoresMouseEvents = settings.clickThrough
+        view.locked = settings.clickThrough
         sampler.onChoice = { [weak self] choice in
             guard let self, self.settings.colorMode == .autoContrast else { return }
             self.view.setColor(NSColor(srgbRed: choice.color.r, green: choice.color.g, blue: choice.color.b, alpha: 1), animated: true)
@@ -96,7 +96,7 @@ final class LyricsController {
         if view.fontSize != settings.fontSize { view.fontSize = settings.fontSize }
         if view.style != settings.style { view.style = settings.style }
         eggs.enabled = settings.easterEggs
-        panel.ignoresMouseEvents = settings.clickThrough
+        view.locked = settings.clickThrough
         monitor.setActive(settings.enabled)
         refresh()
         updateColorSource()
@@ -283,6 +283,7 @@ final class LyricsController {
         guard !visible else { return }
         visible = true
         panel.orderFrontRegardless()
+        view.updateMouseGate()
         if settings.colorMode != .manual { updateColorSource() }
     }
 

@@ -59,10 +59,13 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
         suppressMoveSave = false
     }
 
-    /// Live drag from OverlayView (no persistence until the drag ends).
+    /// Live drag from OverlayView (clamped as it goes; persisted when the drag ends).
     func dragMove(to origin: NSPoint) {
+        var f = frame
+        f.origin = origin
+        f = clamp(f, to: screenFor(point: NSEvent.mouseLocation))
         suppressMoveSave = true
-        setFrameOrigin(origin)
+        setFrameOrigin(f.origin)
         suppressMoveSave = false
     }
 
@@ -101,11 +104,13 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
         NSScreen.screens.first { $0.frame.contains(point) } ?? screen ?? NSScreen.main
     }
 
-    /// Keeps the lyrics on screen: the whole screen (menu bar and Dock areas included) is the limit for
-    /// the text; the window's transparent padding may hang off the edges.
+    /// Keeps the lyrics on screen: the left, right and bottom edges of the screen are the limit for the
+    /// text (the window's transparent padding may hang off them), and the text never covers the menu bar.
     private func clamp(_ rect: NSRect, to screen: NSScreen?) -> NSRect {
-        guard let sf = screen?.frame else { return rect }
-        let limit = sf.insetBy(dx: -overhang, dy: -overhang)
+        guard let screen else { return rect }
+        let sf = screen.frame, top = screen.visibleFrame.maxY
+        let limit = NSRect(x: sf.minX - overhang, y: sf.minY - overhang,
+                           width: sf.width + 2 * overhang, height: (top + overhang) - (sf.minY - overhang))
         var r = rect
         if r.width <= limit.width {
             r.origin.x = min(max(r.origin.x, limit.minX), limit.maxX - r.width)
