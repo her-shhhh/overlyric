@@ -53,7 +53,8 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
   Apple simply hasn't reviewed it. You approve it once.
 - **"Overlyric wants access to control Spotify"** — macOS words this broadly for any app that talks to
   another app. Overlyric only asks Spotify which song is playing and how far in it is. It never touches
-  your account, playlists or likes (only exception: clicking the "encore?" offer restarts that song).
+  your account, playlists or likes. It presses play twice: Coldplay's "Yellow" once on its very first
+  launch (to say hi), and the song you just heard if you click the "encore?" offer.
 - **"Screen Recording"** (only if you turn on Lyrics Colour › Auto) — it looks at a tiny patch right
   behind the lyrics to pick a readable colour. Nothing is saved or sent; the purple menu-bar dot is macOS
   showing you when it looks.
@@ -83,13 +84,13 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 
 | Style | What it looks like |
 |---|---|
-| **Jump** *(default)* | Words jump up into place as they're sung. |
+| **Dynamic** *(default)* | Big billboard rows of mixed sizes, words popping in as they're sung. |
+| **Jump** | Words jump up into place as they're sung. |
 | **Two Lines** | The line being sung, and the next one waiting underneath. |
 | **One Line** | Just the line being sung. |
 | **Scrolling Lyrics** | The whole song drifting slowly upwards, the current line lit (Instagram's teleprompter). |
 | **Typewriter** | Types itself out as it's sung, in a typewriter face. |
 | **Karaoke** | Each line lights up left to right as it's sung. |
-| **Dynamic** | Big billboard rows of mixed sizes, words popping in as they're sung. |
 | **Pop** | One word at a time, flashing on as it's sung. |
 | **Glide** | Lyrics glide right to left like a ticker. |
 | **Cube** | Lines roll over like the faces of a cube. |
@@ -104,7 +105,8 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
   only applies the permission to a freshly opened app. It never asks again by itself, and the grant
   survives updates. The purple screen-capture dot in the menu bar appears briefly when it samples.
 - **Match album artwork** uses the cover's theme colour, brightened for reading.
-- Out of the box the lyrics are **Lemon** yellow; the presets, Custom… and Auto are in Lyrics Colour.
+- Out of the box the lyrics are **Yellow** (and the very first launch plays Coldplay's "Yellow" to match);
+  the presets, Custom… and Auto are in Lyrics Colour.
 
 ## Easter eggs
 
