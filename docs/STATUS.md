@@ -1,4 +1,10 @@
-# Overlyric — status (as of 2026-10-02, version 1.1.0)
+# Overlyric — status (as of 2026-10-02, version 1.1.1)
+
+## 1.1.1 (2026-10-02)
+- Fresh installs start in **Jump** style with **Lemon** lyrics; both are first in their menus.
+- Friends' read-me rewritten story-first and quirky, renamed **"Read This or Hum Forever.txt"**; text lives in
+  `Resources/friends-readme.txt` (release.sh fills in version / min macOS); the GitHub README opens with the
+  same story.
 
 ## 1.1.0 (2026-10-02)
 - Friends' read-me (in the DMG) and README open with a plain-language "About the warnings" section: why

@@ -6,7 +6,7 @@
 
 I always have music on while I work, and a song is twice as good when I can sing along. These days most
 of my singing happens between Claude sessions: Claude writes the code, I perform for an audience of
-zero. The problem? I never knew the words — so it was confident humming and the odd made-up line. So I
+zero. The problem? I never knew the words, so it was confident humming and the odd made-up line. So I
 asked Claude to fix that too, and it built this. Yes, Claude built its own karaoke machine for the
 breaks it gives me. Now the lyrics float right on my screen, and the breaks are louder.
 
