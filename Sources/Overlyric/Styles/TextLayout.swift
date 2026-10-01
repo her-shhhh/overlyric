@@ -86,17 +86,20 @@ final class TextLayout {
         Fragment(rect: toLayer(f.used), characterRange: f.chars)
     }
 
-    /// Words (runs of non-whitespace) with their rects.
+    /// Words (runs of non-whitespace) with their rects. Uses the same geometry as text selection, which
+    /// is correct for scripts that reorder glyphs (Devanagari's ि) or run right to left.
     lazy var words: [Word] = {
         let ns = string.string as NSString
         var out: [Word] = []
         let regex = try! NSRegularExpression(pattern: #"\S+"#)
         for m in regex.matches(in: string.string, range: NSRange(location: 0, length: ns.length)) {
             guard let f = rawFragments.first(where: { NSLocationInRange(m.range.location, $0.chars) }) else { continue }
-            let a = glyphX(glyph(forCharacter: m.range.location))
-            let b = caretX(after: NSMaxRange(m.range) - 1, in: f)
-            let x0 = min(a, b), x1 = max(a, b)
-            let r = CGRect(x: x0, y: f.used.minY, width: max(1, x1 - x0), height: f.used.height)
+            let glyphs = manager.glyphRange(forCharacterRange: m.range, actualCharacterRange: nil)
+            var union = CGRect.null
+            manager.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                                            in: container) { r, _ in union = union.union(r) }
+            guard !union.isNull else { continue }
+            let r = CGRect(x: union.minX, y: f.used.minY, width: max(1, union.width), height: f.used.height)
             out.append(Word(text: ns.substring(with: m.range), rect: toLayer(r), characterRange: m.range))
         }
         return out

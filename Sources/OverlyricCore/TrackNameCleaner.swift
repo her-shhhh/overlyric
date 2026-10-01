@@ -34,19 +34,6 @@ public enum TrackNameCleaner {
         return first.isEmpty ? a : first
     }
 
-    /// Ordered artist variants: full string, then progressively shorter leading artists.
-    public static func artistVariants(_ artist: String) -> [String] {
-        let a = artist.trimmingCharacters(in: .whitespacesAndNewlines)
-        var out = [a]
-        for sep in [", ", " & ", " feat. ", " ft. ", " x ", " X ", " / ", " and "] {
-            if let r = a.range(of: sep) {
-                let first = String(a[a.startIndex..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
-                if !first.isEmpty { out.append(first) }
-            }
-        }
-        return dedupe(out)
-    }
-
     private static func dedupe(_ xs: [String]) -> [String] {
         var seen = Set<String>()
         return xs.filter { seen.insert($0.lowercased()).inserted }

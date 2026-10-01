@@ -6,12 +6,12 @@ import OverlyricCore
 /// Samples the screen behind the overlay window (excluding the overlay itself) with one-shot
 /// ScreenCaptureKit captures and picks a colourful, readable lyric colour for it.
 ///
-/// - Sampling is event-driven (app switch, Space change, overlay moved/resized, screen wake) plus a slow
-///   periodic tick only while music is playing: macOS lights the purple screen-capture indicator for a few
-///   seconds after each capture, so a fast fixed cadence would keep it on permanently.
+/// - Sampling is event-driven — app switch, Space change, light/dark appearance change, overlay moved or
+///   resized, screen wake, and any change in the stack of windows behind the lyrics (checked cheaply,
+///   without capturing) — plus a 4 s tick while music plays to catch content changing inside a window.
 /// - Nothing is captured while the screen is locked or asleep, or while the overlay is hidden.
-/// - Permission is judged by the live ScreenCaptureKit result (CGPreflightScreenCaptureAccess is cached
-///   for the life of the process and would never notice a grant made after launch).
+/// - Captures only run with a Screen Recording grant, so the sampler can never make macOS ask for
+///   permission. Asking is always an explicit click (see `requestPermission` / `continuePermission`).
 @MainActor
 final class BackgroundSampler {
     enum Status: Equatable {
@@ -21,44 +21,66 @@ final class BackgroundSampler {
         case failed(String)
     }
 
+    /// What clicking the menu's permission row does next.
+    enum PermissionStep {
+        /// Ask macOS (its dialog, or System Settings if it was answered before).
+        case ask
+        /// Asked in this run: a grant takes effect once the app is reopened.
+        case reopen
+        /// Reopened for the grant and still not allowed — typically a grant stored for a differently signed
+        /// build, which System Settings shows ticked but macOS ignores. Reset it, then ask again.
+        case reset
+    }
+
     private(set) var status: Status = .off
     /// The last pick. Kept across stop/start so re-showing the overlay starts from the last good colour.
     private(set) var choice: ContrastChooser.Choice?
     var onChoice: ((ContrastChooser.Choice) -> Void)?
-    var onStatusChange: (() -> Void)?
 
     private weak var window: NSWindow?
     private var enabled = false
     private var periodic = false
-    private var suspended = false        // screen locked / asleep
+    private var screenAsleep = false
+    private var screenLocked = false
+    private var suspended: Bool { screenAsleep || screenLocked }
     private var timer: Timer?
+    private var stackTimer: Timer?
     private var generation = 0
     private var inFlight = false
+    private var sampleAgain = false      // something changed while a capture was in flight
     private var pendingKick: DispatchWorkItem?
     private var content: SCShareableContent?
     private var contentFetchedAt = Date.distantPast
     private var consecutiveFailures = 0
+    private var listingRetries = 0
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
-    private var requestedAccessOnce = false
     private var lastSampleAt = Date.distantPast
-    private var declinedAt: Date?
-    /// Set when the user explicitly asks for the permission; only then may a capture attempt run
-    /// without a known grant (that attempt is what lets a grant made after launch take effect).
-    private var probeUntil = Date.distantPast
+    /// Signature of the windows behind the overlay; a change means "something new is behind the lyrics".
+    private var stackSignature = ""
     private var forceNewOnNextSample = false
     private var lastStats: Stats?
+    private var granted = false
+    /// macOS refused a capture; nothing is retried until the user acts.
+    private var declined = false
+    private var askedThisRun = false
 
-    private static let interval: TimeInterval = 6
+    private static let interval: TimeInterval = 4
     private static let minGap: TimeInterval = 0.8
-    private static let declinedBackoff: TimeInterval = 5
     nonisolated private static let sampleWidth = 48
     nonisolated private static let sampleHeight = 24
+    private static let reopenedForPermissionFlag = "--reopened-for-screen-recording"
+    private static let reopenedForPermission = CommandLine.arguments.contains(reopenedForPermissionFlag)
 
     init(window: NSWindow) {
         self.window = window
+        // Watched for the app's lifetime, so a lock or sleep that happens while sampling is off still counts.
+        let ws = NSWorkspace.shared.notificationCenter
+        let dnc = DistributedNotificationCenter.default()
+        watchScreen(ws, NSWorkspace.screensDidSleepNotification) { $0.screenAsleep = true }
+        watchScreen(ws, NSWorkspace.screensDidWakeNotification) { $0.screenAsleep = false }
+        watchScreen(dnc, Notification.Name("com.apple.screenIsLocked")) { $0.screenLocked = true }
+        watchScreen(dnc, Notification.Name("com.apple.screenIsUnlocked")) { $0.screenLocked = false }
     }
-
-    var isEnabled: Bool { enabled }
 
     func setEnabled(_ on: Bool) {
         guard on != enabled else { return }
@@ -89,13 +111,10 @@ final class BackgroundSampler {
         enabled = true
         generation += 1
         let ws = NSWorkspace.shared.notificationCenter
-        observe(ws, NSWorkspace.didActivateApplicationNotification) { $0.kick(after: 0.35) }
-        observe(ws, NSWorkspace.activeSpaceDidChangeNotification) { $0.kick(after: 0.35) }
-        observe(ws, NSWorkspace.screensDidSleepNotification) { $0.setSuspended(true) }
-        observe(ws, NSWorkspace.screensDidWakeNotification) { $0.setSuspended(false) }
-        let dnc = DistributedNotificationCenter.default()
-        observe(dnc, Notification.Name("com.apple.screenIsLocked")) { $0.setSuspended(true) }
-        observe(dnc, Notification.Name("com.apple.screenIsUnlocked")) { $0.setSuspended(false) }
+        observe(ws, NSWorkspace.didActivateApplicationNotification, after: 0.35)
+        observe(ws, NSWorkspace.activeSpaceDidChangeNotification, after: 0.35)
+        // Light ↔ dark appearance: windows behind repaint without moving, so the stack watcher can't see it.
+        observe(DistributedNotificationCenter.default(), Notification.Name("AppleInterfaceThemeChangedNotification"), after: 0.6)
         if let window {
             for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
                 let token = NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
@@ -105,7 +124,14 @@ final class BackgroundSampler {
             }
         }
         rescheduleTimer()
-        setStatus(.sampling)
+        let watcher = Timer(timeInterval: 0.7, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkWindowStack() }
+        }
+        watcher.tolerance = 0.2
+        RunLoop.main.add(watcher, forMode: .common)
+        stackTimer = watcher
+        listingRetries = 0
+        status = hasAccess ? .sampling : .needsPermission
         sample()
     }
 
@@ -113,24 +139,59 @@ final class BackgroundSampler {
         enabled = false
         generation += 1          // results of any in-flight capture are dropped
         inFlight = false
+        sampleAgain = false
         pendingKick?.cancel()
+        stackTimer?.invalidate()
+        stackTimer = nil
         for (center, token) in observers { center.removeObserver(token) }
         observers.removeAll()
         rescheduleTimer()
-        setStatus(.off)
+        status = .off
     }
 
-    private func observe(_ center: NotificationCenter, _ name: Notification.Name, _ action: @escaping (BackgroundSampler) -> Void) {
+    private func observe(_ center: NotificationCenter, _ name: Notification.Name, after delay: TimeInterval) {
         let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { if let self { action(self) } }
+            MainActor.assumeIsolated { self?.kick(after: delay) }
         }
         observers.append((center, token))
     }
 
-    private func setSuspended(_ s: Bool) {
-        suspended = s
-        rescheduleTimer()
-        if !s { kick(after: 0.6) }
+    /// Cheap (no capture): the on-screen windows overlapping the lyrics, front to back. When that changes
+    /// — another window moved behind, a different tab/app came forward — re-sample right away.
+    private func checkWindowStack() {
+        guard enabled, !suspended, let window, window.isVisible else { return }
+        let me = CGWindowID(window.windowNumber)
+        let screenH = NSScreen.screens.first?.frame.height ?? 0
+        let f = window.frame
+        let cg = CGRect(x: f.minX, y: screenH - f.maxY, width: f.width, height: f.height)  // top-left origin
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenBelowWindow, .excludeDesktopElements], me) as? [[String: Any]] else { return }
+        var parts: [String] = []
+        for w in list {
+            guard let b = w[kCGWindowBounds as String] as? [String: CGFloat],
+                  let layer = w[kCGWindowLayer as String] as? Int, layer < 25 else { continue }
+            let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
+            guard r.intersects(cg) else { continue }
+            parts.append("\(w[kCGWindowNumber as String] ?? 0):\(Int(r.minX)),\(Int(r.minY)),\(Int(r.width)),\(Int(r.height))")
+            if r.contains(cg) { break }          // fully covered by this window: nothing deeper matters
+        }
+        let signature = parts.joined(separator: "|")
+        if signature != stackSignature {
+            stackSignature = signature
+            kick(after: 0.15)
+        }
+    }
+
+    private func watchScreen(_ center: NotificationCenter, _ name: Notification.Name, _ update: @escaping (BackgroundSampler) -> Void) {
+        _ = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let was = self.suspended
+                update(self)
+                guard self.suspended != was else { return }
+                self.rescheduleTimer()
+                if !self.suspended { self.kick(after: 0.6) }
+            }
+        }
     }
 
     private func rescheduleTimer() {
@@ -146,7 +207,7 @@ final class BackgroundSampler {
     }
 
     /// Re-samples soon (debounced) after something behind us probably changed.
-    func kick(after delay: TimeInterval) {
+    private func kick(after delay: TimeInterval) {
         guard enabled else { return }
         pendingKick?.cancel()
         let item = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.sample() } }
@@ -156,18 +217,68 @@ final class BackgroundSampler {
 
     // MARK: Permission
 
-    /// Shows the system prompt once per process (only if macOS still considers the question open).
-    func requestPermission() {
-        declinedAt = nil
-        probeUntil = Date().addingTimeInterval(300)
-        if !requestedAccessOnce, !CGPreflightScreenCaptureAccess() {
-            requestedAccessOnce = true
-            _ = CGRequestScreenCaptureAccess()
-        }
-        kick(after: 1.5)
+    /// Whether this process may capture. A grant made while the app runs may only take effect after the
+    /// app is reopened (System Settings offers "Quit & Reopen"); until then this stays false.
+    var hasAccess: Bool { isGranted && !declined }
+
+    private var isGranted: Bool {
+        if !granted { granted = CGPreflightScreenCaptureAccess() }
+        return granted
     }
 
-    static func openSystemSettings() {
+    var permissionStep: PermissionStep {
+        guard !isGranted else { return .ask }          // allowed, but macOS refused a capture: try again
+        if askedThisRun { return .reopen }
+        return Self.reopenedForPermission ? .reset : .ask
+    }
+
+    /// Auto was just turned on: asks macOS once per run (its dialog appears only if the question was
+    /// never answered), otherwise opens the Screen Recording settings.
+    func requestPermission() {
+        declined = false
+        guard !isGranted else { kick(after: 0.1); return }
+        guard !askedThisRun else { Self.openSystemSettings(); return }
+        askedThisRun = true
+        if Self.reopenedForPermission { Self.resetThenAsk() } else { Self.ask() }
+    }
+
+    /// The menu opened: a grant that has taken effect since the last attempt starts sampling right away.
+    func refresh() {
+        if status == .needsPermission, hasAccess { kick(after: 0) }
+    }
+
+    /// The menu's permission row: takes the step `permissionStep` describes.
+    func continuePermission() {
+        if permissionStep == .reopen {
+            NSApp.relaunch(arguments: [Self.reopenedForPermissionFlag])
+        } else {
+            requestPermission()
+        }
+    }
+
+    private static func ask() {
+        if !CGRequestScreenCaptureAccess() { openSystemSettings() }
+    }
+
+    /// Removes Overlyric's own Screen Recording record, so macOS asks afresh and stores a grant that
+    /// matches this build.
+    private static func resetThenAsk() {
+        guard let id = Bundle.main.bundleIdentifier else { ask(); return }
+        let reset = Process()
+        reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        reset.arguments = ["reset", "ScreenCapture", id]
+        reset.terminationHandler = { _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { ask() } }
+        }
+        do {
+            try reset.run()
+        } catch {
+            Log.ui.error("tccutil reset failed: \(error.localizedDescription, privacy: .public)")
+            ask()
+        }
+    }
+
+    private static func openSystemSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
@@ -176,14 +287,14 @@ final class BackgroundSampler {
     // MARK: Sampling
 
     private func sample() {
-        guard enabled, !suspended, !inFlight, let window, window.isVisible else { return }
-        let now = Date()
-        if let declinedAt, now.timeIntervalSince(declinedAt) < Self.declinedBackoff { return }
-        // Never let a background capture be the thing that pops a permission dialog.
-        if !CGPreflightScreenCaptureAccess(), now > probeUntil {
-            setStatus(.needsPermission)
+        guard enabled, !suspended, let window, window.isVisible else { return }
+        guard !inFlight else { sampleAgain = true; return }
+        // Never let a capture attempt be the thing that pops a permission dialog.
+        guard hasAccess else {
+            status = .needsPermission
             return
         }
+        let now = Date()
         guard now.timeIntervalSince(lastSampleAt) >= Self.minGap else { kick(after: Self.minGap); return }
         inFlight = true
         lastSampleAt = now
@@ -192,7 +303,15 @@ final class BackgroundSampler {
         let windowNumber = CGWindowID(window.windowNumber)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { if gen == self.generation { self.inFlight = false } }
+            defer {
+                if gen == self.generation {
+                    self.inFlight = false
+                    if self.sampleAgain {
+                        self.sampleAgain = false
+                        self.kick(after: 0.1)
+                    }
+                }
+            }
             do {
                 let (rect, displayID) = try self.displayRect(for: frame)
                 var content = try await self.shareableContent()
@@ -202,7 +321,11 @@ final class BackgroundSampler {
                 if me.isEmpty {                                                   // stale list → refetch once
                     content = try await self.shareableContent(force: true)
                     me = content.windows.filter { $0.windowID == windowNumber }
-                    guard !me.isEmpty else { return }                             // never sample our own text
+                    guard !me.isEmpty else {                                      // never sample our own text
+                        self.listingRetries += 1                                  // just shown: listed shortly
+                        self.sampleAgain = self.listingRetries <= 3
+                        return
+                    }
                 }
                 guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else { return }
                 let filter = SCContentFilter(display: scDisplay, excludingWindows: me)
@@ -219,8 +342,8 @@ final class BackgroundSampler {
                 guard gen == self.generation, self.enabled else { return }
                 guard let stats = Self.statistics(image) else { return }
                 self.consecutiveFailures = 0
-                self.declinedAt = nil
-                self.setStatus(.sampling)
+                self.listingRetries = 0
+                self.status = .sampling
                 self.lastStats = stats
                 self.apply(stats)
             } catch {
@@ -228,25 +351,26 @@ final class BackgroundSampler {
                 self.content = nil
                 let ns = error as NSError
                 if ns.domain == SCStreamErrorDomain, ns.code == SCStreamError.userDeclined.rawValue {
-                    self.declinedAt = Date()
-                    self.setStatus(.needsPermission)
+                    self.granted = false                                          // re-check: revoked, or just refused once
+                    self.declined = true
+                    self.sampleAgain = false
+                    self.status = .needsPermission
                     return
                 }
                 if error is SamplerError { return }                               // off-screen etc.: just skip
                 self.consecutiveFailures += 1
                 Log.ui.error("background sample failed: \(ns.domain, privacy: .public) \(ns.code, privacy: .public) \(ns.localizedDescription, privacy: .public)")
-                if self.consecutiveFailures >= 3 { self.setStatus(.failed(ns.localizedDescription)) }
+                if self.consecutiveFailures >= 3 { self.status = .failed(ns.localizedDescription) }
             }
         }
     }
 
-    private enum SamplerError: LocalizedError {
+    private enum SamplerError: Error {
         case offScreen
-        var errorDescription: String? { "the lyrics are off-screen" }
     }
 
     /// The window's frame converted to ScreenCaptureKit's display space: points, origin at the top-left
-    /// of the display that contains the window's centre (verified empirically, see docs).
+    /// of the display that contains the window's centre.
     private func displayRect(for frame: NSRect) throws -> (CGRect, CGDirectDisplayID) {
         let centre = NSPoint(x: frame.midX, y: frame.midY)
         let screen = NSScreen.screens.first { $0.frame.contains(centre) } ?? window?.screen ?? NSScreen.main
@@ -270,14 +394,14 @@ final class BackgroundSampler {
         return c
     }
 
-    struct Stats {
+    private struct Stats {
         let mean: RGB
         /// Median per-pixel luminance: what the text sits on for most of its area (a bright minority
         /// such as text glyphs or a window edge cannot drag it up the way a linear mean would).
         let luminance: Double
     }
 
-    nonisolated static func statistics(_ image: CGImage) -> Stats? {
+    nonisolated private static func statistics(_ image: CGImage) -> Stats? {
         let w = sampleWidth, h = sampleHeight
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
@@ -310,11 +434,5 @@ final class BackgroundSampler {
         choice = new
         Log.ui.notice("auto colour: bg=(\(String(format: "%.2f %.2f %.2f", stats.mean.r, stats.mean.g, stats.mean.b), privacy: .public)) medianL=\(String(format: "%.3f", stats.luminance), privacy: .public) → \(new.lightText ? "bright" : "deep", privacy: .public) (\(String(format: "%.2f %.2f %.2f", new.color.r, new.color.g, new.color.b), privacy: .public))")
         onChoice?(new)
-    }
-
-    private func setStatus(_ s: Status) {
-        guard s != status else { return }
-        status = s
-        onStatusChange?()
     }
 }

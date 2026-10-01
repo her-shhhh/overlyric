@@ -18,13 +18,20 @@ import OverlyricCore
         let onset: TimeInterval
     }
 
+    /// How the flashes were last timed: the flash current then, the playback time its pop started (nil =
+    /// shown as is) and the clock both are measured on. Later flashes pop in at their onsets on that clock.
+    private struct Shown {
+        let index: Int
+        let popStart: TimeInterval?
+        let clock: PlaybackClock
+    }
+
     private var flashes: [Flash] = []
     /// ♪ (before the first line / gaps) or a status note.
     private var still: TextLayer?
     /// The sung line on screen (track id, line index); nil while showing ♪ or a note.
     private var line: (id: String, index: Int)?
-    /// The clock the flashes were last timed with (so a re-time or relayout can carry on seamlessly).
-    private var lastClock: PlaybackClock?
+    private var shown: Shown?
     let transitionDuration: TimeInterval = 0.16
 
     private static let sizeFactor: CGFloat = 1.6
@@ -32,7 +39,7 @@ import OverlyricCore
     private static let popDuration: TimeInterval = 0.16
 
     func show(_ content: StyleContent, advancing: Bool, context ctx: RenderContext) -> CGSize {
-        let previousLine = line, previousClock = lastClock
+        let previousLine = line, previous = shown
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
@@ -50,7 +57,7 @@ import OverlyricCore
             // A line change pops its first word. A relayout of the same line (resize) carries on exactly
             // where it was; anything else (seek to another line, first show) shows the current word as is.
             let relayout = !advancing && previousLine?.id == sung.state.id && previousLine?.index == sung.index
-            applyTiming(sung.state.clock, popCurrent: advancing, previous: relayout ? previousClock : nil)
+            applyTiming(sung.state.clock, popCurrent: advancing, carry: relayout ? previous : nil)
         } else {
             var note: String?
             if case .note(let s) = content { note = s }
@@ -84,7 +91,7 @@ import OverlyricCore
     /// Lays out every flash of the line (hidden), top-aligned and centred; returns the block size.
     private func layoutFlashes(_ text: String, state st: LyricsState, line i: Int, context ctx: RenderContext) -> CGSize {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-        let onsets = Self.onsets(of: words, characters: text.count, start: st.start(i), end: st.end(i))
+        let onsets = WordTiming.onsets(of: words, characters: text.count, start: st.start(i), end: st.end(i))
         var maxInk: CGFloat = 0
         var height: CGFloat = 0
         for phrase in Self.phrases(words) {
@@ -117,7 +124,7 @@ import OverlyricCore
         root.addSublayer(l)
     }
 
-    /// Ink width of a text layer: its glyph extent, never more than its bitmap (which clips anyway).
+    /// Ink width of a text layer: its typeset extent, never more than its bitmap (which clips anyway).
     private static func ink(_ l: TextLayer) -> CGFloat {
         min(inkWidth(l.layout!), l.bounds.width)
     }
@@ -134,7 +141,7 @@ import OverlyricCore
         var out: [(text: String, firstWord: Int)] = []
         var j = 0
         while j < words.count {
-            if j + 1 < words.count, letters(in: words[j]) <= 3, !endsClause(words[j]) {
+            if j + 1 < words.count, WordTiming.letters(in: words[j]) <= 3, !WordTiming.endsClause(words[j]) {
                 out.append((words[j] + " " + words[j + 1], j))
                 j += 2
             } else {
@@ -145,59 +152,32 @@ import OverlyricCore
         return out
     }
 
-    /// When each word is sung, interpolated across the line: weight = letters (+1.5 after punctuation),
-    /// spread over 85% of min(line duration, 0.35 s + 75 ms per character).
-    private static func onsets(of words: [String], characters: Int, start: TimeInterval, end: TimeInterval) -> [TimeInterval] {
-        let span = 0.85 * min(max(0, end - start), max(0.35, 0.075 * Double(characters) + 0.35))
-        let weights = words.map { Double(letters(in: $0)) + (endsClause($0) ? 1.5 : 0) }
-        let total = weights.reduce(0, +)
-        var out: [TimeInterval] = []
-        var before = 0.0
-        for (k, w) in weights.enumerated() {
-            let f = total > 0 ? before / total : Double(k) / Double(max(1, words.count))
-            out.append(start + span * f)
-            before += w
-        }
-        return out
-    }
-
-    private static func letters(in word: String) -> Int {
-        word.reduce(0) { $0 + ($1.isLetter || $1.isNumber ? 1 : 0) }
-    }
-
-    private static let clauseMarks: Set<Character> = [",", ".", "!", "?", ";", ":", "…", "—", "–"]
-
-    /// The word ends with punctuation that makes the singer breathe ("love," "go!" "(yeah)").
-    private static func endsClause(_ word: String) -> Bool {
-        var w = Substring(word)
-        while let c = w.last, "\"'”’)]".contains(c) {
-            if c == ")" || c == "]" { return true }
-            w = w.dropLast()
-        }
-        return w.last.map { clauseMarks.contains($0) } ?? false
-    }
-
     // MARK: Timing
 
     /// (Re)builds every flash's visibility from `clock`. Playing: each flash is shown exactly from its
-    /// onset to the next flash's onset (the last one stays), popping in; all on the compositor.
-    /// Paused: the flash current at `clock.position` is shown statically.
-    /// `previous` = the clock the flashes on screen were timed with: while playing on, the word on screen
-    /// keeps its own pop (no restart, no snap); a word the new clock moves to pops in.
-    private func applyTiming(_ clock: PlaybackClock, popCurrent: Bool, previous: PlaybackClock?) {
-        lastClock = clock
+    /// onset to the next flash's onset (the last one stays), popping in; all on the compositor. Paused: the
+    /// flash current at `clock.position` is shown still (held mid-pop if it was popping).
+    /// `carry` = what was on screen before: while the same flash is current it carries on as it was (its
+    /// pop neither restarts nor snaps), and if playback moved to another word, that word pops in now.
+    /// Without it, the current flash pops in only when `popCurrent`.
+    private func applyTiming(_ clock: PlaybackClock, popCurrent: Bool, carry: Shown?) {
         guard !flashes.isEmpty else { return }
         let now = CACurrentMediaTime()
-        let current = flashIndex(at: clock.playbackTime(at: now))
-        // The current flash is on screen from now at the latest (covers clock jitter at the line start).
-        var currentFrom = min(clock.hostTime(of: flashes[current].onset), now)
-        var popCurrent = popCurrent
-        if let previous, previous.playing, clock.playing {
-            popCurrent = true
-            if flashIndex(at: previous.playbackTime(at: now)) == current {
-                currentFrom = min(previous.hostTime(of: flashes[current].onset), now)
+        let t = clock.playbackTime(at: now)
+        let current = flashIndex(at: t)
+        var popStart = popCurrent ? min(flashes[current].onset, t) : nil
+        if let carry {
+            // The flash on screen right now under the old clock, and when its pop started.
+            let before = carry.clock.playbackTime(at: now)
+            let onScreen = flashIndex(at: before)
+            if onScreen == current {
+                let started = onScreen == carry.index ? carry.popStart : flashes[onScreen].onset
+                popStart = started.map { t - (before - $0) }
+            } else if clock.playing {
+                popStart = t
             }
         }
+        shown = Shown(index: current, popStart: popStart, clock: clock)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (k, f) in flashes.enumerated() {
@@ -206,16 +186,21 @@ import OverlyricCore
             l.transform = CATransform3DIdentity
             guard clock.playing else {
                 l.opacity = k == current ? 1 : 0
+                if k == current, let popStart, (0..<Self.popDuration).contains(t - popStart) { holdPop(l, at: t - popStart) }
                 continue
             }
             guard k >= current else {
                 l.opacity = 0                                     // already sung
                 continue
             }
-            let from = k == current ? currentFrom : clock.hostTime(of: f.onset)
             let until = k + 1 < flashes.count ? clock.hostTime(of: flashes[k + 1].onset) : nil
-            let pop = k == current && !popCurrent ? 0 : Self.popDuration
-            flash(l, from: from, until: until, pop: pop)
+            if k > current {
+                flash(l, from: clock.hostTime(of: f.onset), until: until, pop: Self.popDuration)
+            } else if let popStart {
+                flash(l, from: clock.hostTime(of: popStart), until: until, pop: Self.popDuration)
+            } else {
+                flash(l, from: min(clock.hostTime(of: f.onset), now), until: until, pop: 0)
+            }
         }
         CATransaction.commit()
     }
@@ -250,6 +235,16 @@ import OverlyricCore
         l.add(keyframes("transform.scale", [Self.popScale, 1, 1], at: [0, t, 1], begin: begin, duration: window, fill: .removed), forKey: "popScale")
     }
 
+    /// Holds a pop still, `elapsed` seconds in (paused mid-pop); resuming re-times it from there.
+    private func holdPop(_ l: CALayer, at elapsed: TimeInterval) {
+        for (key, path, values) in [("popOpacity", "opacity", [0, 1]), ("popScale", "transform.scale", [Self.popScale, 1])] {
+            let a = keyframes(path, values, at: [0, 1], begin: 0, duration: Self.popDuration, fill: .both)
+            a.speed = 0
+            a.timeOffset = elapsed
+            l.add(a, forKey: key)
+        }
+    }
+
     /// A keyframe animation whose first segment eases out (the pop) and whose rest holds linearly.
     private func keyframes(_ keyPath: String, _ values: [CGFloat], at times: [Double], begin: CFTimeInterval,
                            duration: TimeInterval, fill: CAMediaTimingFillMode) -> CAKeyframeAnimation {
@@ -266,10 +261,8 @@ import OverlyricCore
     }
 
     func retime(_ state: LyricsState, context: RenderContext) {
-        guard let line, line.id == state.id, line.index == state.index, !flashes.isEmpty else { return }
-        // Playing on (drift correction / seek within the line): the word on screen carries on, a new one
-        // pops. Resuming from a pause: the word shown while paused stays as it is.
-        applyTiming(state.clock, popCurrent: false, previous: lastClock)
+        guard let line, line.id == state.id, line.index == state.index, let shown else { return }
+        applyTiming(state.clock, popCurrent: false, carry: shown)
     }
 
     // MARK: Colour, words, teardown
@@ -289,11 +282,49 @@ import OverlyricCore
         if let still { still.removeAllAnimations(); forget(still) }
         still = nil
         line = nil
-        lastClock = nil
+        shown = nil
     }
 
     override func teardown() {
         super.teardown()
-        flashes.removeAll(); still = nil; line = nil; lastClock = nil
+        flashes.removeAll(); still = nil; line = nil; shown = nil
+    }
+}
+
+// MARK: - Word timing
+
+/// When each word of a line is sung, interpolated across the line. Pop and Jump share it, so both styles
+/// keep the same rhythm.
+enum WordTiming {
+    /// Weight = letters (+1.5 after clause punctuation), spread over 85% of min(line duration, 0.35 s + 75 ms
+    /// per character).
+    static func onsets(of words: [String], characters: Int, start: TimeInterval, end: TimeInterval) -> [TimeInterval] {
+        let span = 0.85 * min(max(0, end - start), max(0.35, 0.075 * Double(characters) + 0.35))
+        let weights = words.map { Double(letters(in: $0)) + (endsClause($0) ? 1.5 : 0) }
+        let total = weights.reduce(0, +)
+        var out: [TimeInterval] = []
+        var before = 0.0
+        for (k, w) in weights.enumerated() {
+            let f = total > 0 ? before / total : Double(k) / Double(max(1, words.count))
+            out.append(start + span * f)
+            before += w
+        }
+        return out
+    }
+
+    static func letters(in word: String) -> Int {
+        word.reduce(0) { $0 + ($1.isLetter || $1.isNumber ? 1 : 0) }
+    }
+
+    private static let clauseMarks: Set<Character> = [",", ".", "!", "?", ";", ":", "…", "—", "–"]
+
+    /// The word ends with punctuation that makes the singer breathe ("love," "go!" "(yeah)").
+    static func endsClause(_ word: String) -> Bool {
+        var w = Substring(word)
+        while let c = w.last, "\"'”’)]".contains(c) {
+            if c == ")" || c == "]" { return true }
+            w = w.dropLast()
+        }
+        return w.last.map { clauseMarks.contains($0) } ?? false
     }
 }

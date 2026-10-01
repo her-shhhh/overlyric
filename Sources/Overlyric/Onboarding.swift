@@ -39,12 +39,28 @@ enum Onboarding {
             failed.runModal()
             return false
         }
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: destination, configuration: config) { _, _ in
+        // An older copy may still be running (from the bundle just trashed): it quits too, so the moved
+        // copy starts as the only one.
+        return NSApp.relaunch(destination, quitting: otherInstances)
+    }
+
+    /// If a copy launched earlier is running, opens that one (which shows its menu) and quits this one.
+    static func handOffToRunningInstance() -> Bool {
+        let me = NSRunningApplication.current
+        let myLaunch = (me.launchDate ?? .distantPast, me.processIdentifier)
+        guard let other = otherInstances.first(where: { ($0.launchDate ?? .distantPast, $0.processIdentifier) < myLaunch }),
+              let url = other.bundleURL else { return false }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
             DispatchQueue.main.async { NSApp.terminate(nil) }
         }
         return true
+    }
+
+    private static var otherInstances: [NSRunningApplication] {
+        guard let id = Bundle.main.bundleIdentifier else { return [] }
+        let me = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication.runningApplications(withBundleIdentifier: id)
+            .filter { $0.processIdentifier != me && !$0.isTerminated }
     }
 
     /// The very first launch shows a short hello in the overlay (only once, ever).

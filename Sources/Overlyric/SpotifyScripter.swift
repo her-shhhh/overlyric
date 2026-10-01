@@ -58,11 +58,9 @@ final class SpotifyScripter: NSObject, SBApplicationDelegate {
         queue.async {
             guard let app = self.bridge(pid: pid) else { return }
             let current = (app.value(forKey: "currentTrack") as? SBObject)?.value(forKey: "id") as? String
-            if current == trackID {
-                app.setValue(0, forKey: "playerPosition")
-            } else {
-                app.perform(NSSelectorFromString("previousTrack"))
-            }
+            app.setValue(0, forKey: "playerPosition")
+            // From position 0, "previous" goes back a track (later in a track it would only rewind it).
+            if current != trackID { app.perform(NSSelectorFromString("previousTrack")) }
         }
     }
 

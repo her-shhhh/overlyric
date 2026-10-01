@@ -110,6 +110,9 @@ struct SplitMix64: RandomNumberGenerator {
         // A white background: must change (polarity flips).
         let third = ContrastChooser.choose(background: .white, previous: second, using: &rng)
         #expect(!third.lightText && third != second)
+        // And back to a dark window: bright again.
+        let fourth = ContrastChooser.choose(background: c(0x1E1E1E), previous: third, using: &rng)
+        #expect(fourth.lightText)
     }
 
     @Test func forceNewPicksAClearlyDifferentHue() {

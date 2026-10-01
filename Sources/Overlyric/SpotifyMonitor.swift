@@ -10,7 +10,7 @@ import OverlyricCore
 @MainActor
 final class SpotifyMonitor {
     nonisolated static let bundleID = "com.spotify.client"
-    static let notificationName = Notification.Name("com.spotify.client.PlaybackStateChanged")
+    private static let notificationName = Notification.Name("com.spotify.client.PlaybackStateChanged")
 
     enum Automation: Equatable { case unknown, granted, denied, unavailable(String) }
 
@@ -28,7 +28,7 @@ final class SpotifyMonitor {
     private var lastPushAt = Date.distantPast
     private var observersInstalled = false
 
-    var runningSpotify: NSRunningApplication? {
+    private var runningSpotify: NSRunningApplication? {
         NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first
     }
     var isSpotifyRunning: Bool { runningSpotify != nil }
@@ -129,7 +129,7 @@ final class SpotifyMonitor {
         pollTimer = timer
     }
 
-    func pollNow(full requestedFull: Bool) {
+    private func pollNow(full requestedFull: Bool) {
         guard let spotify = runningSpotify else {
             if snapshot != .empty { clear() }
             return

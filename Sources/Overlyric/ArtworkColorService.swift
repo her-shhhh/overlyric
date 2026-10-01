@@ -23,8 +23,9 @@ final class ArtworkColorService {
             if (response as? HTTPURLResponse)?.statusCode ?? 200 == 200, let image = NSImage(data: data),
                let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
                 if let theme = ArtworkColor.vibrant(Self.samplePixels(cg)) {
-                    result = ArtworkColor.textColor(from: theme)
-                    Log.ui.notice("artwork colour for \(trackKey, privacy: .public): theme=(\(String(format: "%.2f %.2f %.2f", theme.r, theme.g, theme.b), privacy: .public)) → text=(\(String(format: "%.2f %.2f %.2f", result!.r, result!.g, result!.b), privacy: .public))")
+                    let text = ArtworkColor.textColor(from: theme)
+                    result = text
+                    Log.ui.notice("artwork colour for \(trackKey, privacy: .public): theme=(\(String(format: "%.2f %.2f %.2f", theme.r, theme.g, theme.b), privacy: .public)) → text=(\(String(format: "%.2f %.2f %.2f", text.r, text.g, text.b), privacy: .public))")
                 } else {
                     Log.ui.notice("artwork colour for \(trackKey, privacy: .public): greyscale art, using default")
                 }
@@ -37,7 +38,7 @@ final class ArtworkColorService {
         return result
     }
 
-    nonisolated static func samplePixels(_ image: CGImage) -> [RGB] {
+    nonisolated private static func samplePixels(_ image: CGImage) -> [RGB] {
         let w = 40, h = 40
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,

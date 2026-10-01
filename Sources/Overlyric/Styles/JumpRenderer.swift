@@ -6,62 +6,63 @@ import OverlyricCore
 
 /// Instagram's "Dynamic Lyrics: Jump": the whole line is laid out up front (wrapped, centred), and each
 /// word jumps up into its place from just below, with a little spring-like overshoot, as it is sung.
-/// The outgoing line fades up and away. Everything moves on the compositor; nothing runs per frame.
+/// The outgoing line floats up and fades out quickly. Everything moves on the compositor; nothing runs
+/// per frame.
+///
+/// The line is laid out once and every word is drawn from that one layout by its own layer, so at rest
+/// the words are exactly the plain line, in any script (nothing is re-laid out or re-measured per word).
 @MainActor final class JumpRenderer: BaseRenderer, StyleRenderer {
     /// One jumping piece of the line (a word, or the part of a wrapped word on one visual line), the
-    /// playback time its jump starts (-∞ = always shown, never jumps) and, while a jump is scheduled or
-    /// running, its host start time.
+    /// playback time its jump starts and, while a jump is scheduled or running, its host start time.
     private struct Unit {
-        let layer: TextLayer
+        let layer: GlyphLayer
         let at: TimeInterval
         var jumpStart: CFTimeInterval? = nil
     }
 
-    /// A line on its way out, with its text layers (still registered, so a recolour reaches them).
+    /// A line on its way out. Its layers are kept until its fade ends (so a recolour still reaches them).
     private struct Ghost {
         let block: QuietLayer
-        let layers: [TextLayer]
-    }
-
-    /// Where a piece of a word sits in the full line layout (layout coordinates). `trailing` = pinned by
-    /// its right edge (a piece that ends its visual line), otherwise by its left edge.
-    private struct Slot {
-        let text: String
-        let rect: CGRect
-        let trailing: Bool
+        let still: TextLayer?
+        let ink: LineInk?
+        let layers: [GlyphLayer]
     }
 
     private var block: QuietLayer?
+    private var still: TextLayer?               // ♪ before the first line, loading, or a note
+    private var ink: LineInk?                   // the sung line (or a gap's ♪), which the units draw from
     private var units: [Unit] = []
     private var ghosts: [Ghost] = []
     private var lineWords: [(text: String, rect: CGRect)] = []
-    private var lineID: String?
-    private var lineIndex: Int?
-    private var rise: CGFloat = 0              // how far below its slot a word starts its jump
+    private var line: (id: String, index: Int)?
+    private var rise: CGFloat = 0               // how far below its place a word starts its jump
     let transitionDuration: TimeInterval = 0.3
 
     private static let jumpKey = "jump"
     private static let jumpDuration: CFTimeInterval = 0.28
+    /// The outgoing line is gone this fast, before the first word of the new line lands where it was.
+    private static let fadeOutDuration: CFTimeInterval = 0.08
 
     func show(_ content: StyleContent, advancing: Bool, context ctx: RenderContext) -> CGSize {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        // A line change while playing lets earlier ghosts finish their fade; anything else starts clean.
+        // A line change while playing lets earlier ghosts finish leaving; anything else starts clean.
         if !advancing { clearGhosts() }
         var leaving: QuietLayer?
         if let old = block {
             if advancing {
                 leaving = retire(old)
             } else {
-                for u in units { forget(u.layer) }
+                if let still { forget(still) }
                 old.removeFromSuperlayer()
             }
         }
         block = nil
+        still = nil
+        ink = nil
         units.removeAll()
         lineWords.removeAll()
-        lineID = nil
-        lineIndex = nil
+        line = nil
 
         let b = QuietLayer()
         b.anchorPoint = CGPoint(x: 0.5, y: 1)
@@ -74,13 +75,12 @@ import OverlyricCore
         if case .lyrics(let st) = content, let i = st.index {
             // A gap shows ♪, which jumps in like a word.
             let raw = st.text(i)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            lineID = st.id
-            lineIndex = i
+            line = (st.id, i)
             rise = ctx.fontSize * 0.5
             size = layoutWords(raw.isEmpty ? "♪" : raw, st: st, line: i, in: b, ctx: ctx)
-            applyTiming(st)
+            applyTiming(st.clock)
         } else {
-            // Before the first line, loading or a note: one static layer.
+            // Before the first line, loading or a note: one still layer.
             let text: String
             let isNote: Bool
             if case .note(let s) = content { text = s; isNote = true } else { text = "♪"; isNote = false }
@@ -88,153 +88,93 @@ import OverlyricCore
             l.anchorPoint = CGPoint(x: 0.5, y: 1)
             l.position = .zero
             b.addSublayer(l)
-            units = [Unit(layer: l, at: -.infinity)]
+            still = l
             size = CGSize(width: max(Self.inkWidth(l.layout!), 24), height: l.bounds.height)
         }
         setBlockSize(size)
         CATransaction.commit()
 
-        if let leaving {
-            let s = leaving.position
-            animate(leaving, from: (s, 1, 1), to: (CGPoint(x: s.x, y: s.y + ctx.fontSize * 0.4), 1, 0),
-                    duration: transitionDuration) { [weak self, weak leaving] in
-                guard let self, let leaving else { return }
-                self.dropGhost(leaving)
-            }
-        }
+        if let leaving { leave(leaving, travel: ctx.fontSize * 0.4) }
         return size
     }
 
-    /// Turns the current block into a ghost as it looks right now: a word still waiting for its moment
-    /// stays hidden (it must not pop up on the way out), a word mid-jump finishes its jump as it fades.
-    private func retire(_ old: QuietLayer) -> QuietLayer {
-        let now = CACurrentMediaTime()
-        for u in units {
-            guard let start = u.jumpStart, now < start + 0.01 else { continue }
-            u.layer.removeAnimation(forKey: Self.jumpKey)
-            u.layer.opacity = 0
-        }
-        ghosts.append(Ghost(block: old, layers: units.map(\.layer)))
-        return old
-    }
+    // MARK: Layout
 
-    private func dropGhost(_ block: QuietLayer) {
-        guard let k = ghosts.firstIndex(where: { $0.block === block }) else { return }
-        let g = ghosts.remove(at: k)
-        for l in g.layers { forget(l) }
-        g.block.removeAllAnimations()
-        g.block.removeFromSuperlayer()
-    }
-
-    private func clearGhosts() {
-        let all = ghosts
-        ghosts.removeAll()
-        for g in all {
-            for l in g.layers { forget(l) }
-            g.block.removeAllAnimations()
-            g.block.removeFromSuperlayer()
-        }
-    }
-
-    /// Lays the whole line out once and gives every word its own layer exactly where the line puts it.
+    /// Lays the whole line out once and gives every word its own layer, which draws just that word's glyphs
+    /// from the line's layout, where the line has them. Returns the plain line's block size.
     private func layoutWords(_ text: String, st: LyricsState, line i: Int, in b: CALayer, ctx: RenderContext) -> CGSize {
         let full = ctx.layout(text)
+        let lineInk = LineInk(text, context: ctx)
         let W = full.width, H = full.size.height
-        let pad = ceil(ctx.fontSize * 0.25)
-        // Whole device pixels, so a word at rest is as crisp as the plain line (the block origin is).
+        // Room for glyphs that overhang their typeset extent (only the word's own glyphs are drawn, so its
+        // neighbours never show in it).
+        let pad = ceil(ctx.fontSize * 0.3)
+        // Bitmaps on the plain line's device-pixel grid, so a word at rest is rasterized exactly like it.
         let px = 1 / max(1, ctx.scale)
-        func snap(_ v: CGFloat) -> CGFloat { (v / px).rounded() * px }
         let words = full.words
-        let onsets = Self.onsets(of: words.map(\.text), characters: text.count, start: st.start(i), end: st.end(i))
+        let onsets = WordTiming.onsets(of: words.map(\.text), characters: text.count, start: st.start(i), end: st.end(i))
         for (w, at) in zip(words, onsets) {
-            for slot in Self.slots(of: w, in: full) {
-                let piece = slot.text
-                // Wide enough never to wrap (the slot is at least as wide as the piece), room for overhangs.
-                let width = ceil(slot.rect.width) + 2 * pad
-                let l = makeTextLayer(ctx) { TextLayout($0.attributed(piece), width: width) }
-                let own = l.layout?.fragments.first?.rect ?? .zero
-                let x = slot.trailing ? slot.rect.maxX - own.maxX : slot.rect.minX - own.minX
+            var extent = CGRect.null
+            for piece in lineInk.pieces(of: w.characterRange) {
+                let r = piece.rect.insetBy(dx: -pad, dy: -pad)
+                let x0 = (r.minX / px).rounded(.down) * px, y0 = (r.minY / px).rounded(.down) * px
+                let l = GlyphLayer()
+                l.contentsScale = ctx.scale
                 l.anchorPoint = .zero
-                l.position = CGPoint(x: snap(x - W / 2), y: snap(slot.rect.minY - own.minY - H))
+                l.bounds = CGRect(x: x0, y: y0, width: (r.maxX / px).rounded(.up) * px - x0,
+                                  height: (r.maxY / px).rounded(.up) * px - y0)
+                l.position = CGPoint(x: x0 - W / 2, y: y0 - H)
+                l.glyphs = piece.glyphs
+                l.ink = lineInk
                 b.addSublayer(l)
                 units.append(Unit(layer: l, at: at))
+                extent = extent.union(piece.rect)
             }
-            lineWords.append((w.text, w.rect.offsetBy(dx: -W / 2, dy: -H)))
+            if !extent.isNull { lineWords.append((w.text, extent.offsetBy(dx: -W / 2, dy: -H))) }
         }
+        ink = lineInk
         return CGSize(width: max(Self.inkWidth(full), 24), height: H)
     }
 
-    /// Normally the word itself. A token the layout wrapped mid-way (a long "ooh-ooh-ooh-…" run) is split
-    /// per visual line; each piece then starts its line or ends it, and is pinned to that edge.
-    private static func slots(of w: TextLayout.Word, in full: TextLayout) -> [Slot] {
-        let frags = full.fragments.filter { NSIntersectionRange($0.characterRange, w.characterRange).length > 0 }
-        guard frags.count > 1 else { return [Slot(text: w.text, rect: w.rect, trailing: false)] }
-        let ns = full.string.string as NSString
-        return frags.compactMap { f in
-            let part = NSIntersectionRange(f.characterRange, w.characterRange)
-            let text = ns.substring(with: part)
-            guard !text.isEmpty else { return nil }
-            return Slot(text: text, rect: f.rect, trailing: part.location > f.characterRange.location)
-        }
-    }
+    // MARK: Timing
 
-    /// When each word is sung, interpolated across the line (the same weighting as Pop): weight = letters
-    /// (+1.5 after clause punctuation), spread over 85% of min(line duration, 0.35 s + 75 ms per character).
-    private static func onsets(of words: [String], characters: Int, start: TimeInterval, end: TimeInterval) -> [TimeInterval] {
-        let span = 0.85 * min(max(0, end - start), max(0.35, 0.075 * Double(characters) + 0.35))
-        let weights = words.map { Double(letters(in: $0)) + (endsClause($0) ? 1.5 : 0) }
-        let total = weights.reduce(0, +)
-        var out: [TimeInterval] = []
-        var before = 0.0
-        for (k, w) in weights.enumerated() {
-            let f = total > 0 ? before / total : Double(k) / Double(max(1, words.count))
-            out.append(start + span * f)
-            before += w
-        }
-        return out
-    }
-
-    private static func letters(in word: String) -> Int {
-        word.reduce(0) { $0 + ($1.isLetter || $1.isNumber ? 1 : 0) }
-    }
-
-    private static let clauseMarks: Set<Character> = [",", ".", "!", "?", ";", ":", "…", "—", "–"]
-
-    /// The word ends with punctuation that makes the singer breathe ("love," "go!" "(yeah)").
-    private static func endsClause(_ word: String) -> Bool {
-        var w = Substring(word)
-        while let c = w.last, "\"'”’)]".contains(c) {
-            if c == ")" || c == "]" { return true }
-            w = w.dropLast()
-        }
-        return w.last.map { clauseMarks.contains($0) } ?? false
-    }
-
-    /// Re-times every jump for `st.clock`: sung words in place, the rest jumping at their moment.
-    private func applyTiming(_ st: LyricsState) {
+    /// Times every jump from `clock`, as a pure function of it (so a re-time, a pause or a relayout carries
+    /// on seamlessly). Playing: each word jumps at its moment, on the compositor. Paused: each word is shown
+    /// as it is at `clock.position`, held mid-jump if it is jumping; resuming carries on from there.
+    private func applyTiming(_ clock: PlaybackClock) {
         let now = CACurrentMediaTime()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for k in units.indices {
-            let u = units[k]
+            let l = units[k].layer, at = units[k].at
             units[k].jumpStart = nil
-            u.layer.removeAnimation(forKey: Self.jumpKey)
-            u.layer.opacity = 1
-            guard u.at.isFinite else { continue }
-            guard st.clock.playing else {
-                u.layer.opacity = st.clock.position >= u.at ? 1 : 0
+            l.removeAnimation(forKey: Self.jumpKey)
+            l.opacity = 1
+            guard clock.playing else {
+                let elapsed = clock.position - at
+                if elapsed < 0 {
+                    l.opacity = 0
+                } else if elapsed < Self.jumpDuration {
+                    let j = jump()
+                    j.speed = 0
+                    j.timeOffset = elapsed
+                    l.add(j, forKey: Self.jumpKey)
+                }
                 continue
             }
-            let start = st.clock.hostTime(of: u.at)
+            let start = clock.hostTime(of: at)
             guard start + Self.jumpDuration > now else { continue }   // already in place
-            addJump(to: u.layer, at: start, rise: rise)
+            let j = jump()
+            j.beginTime = l.convertTime(start, from: nil)
+            j.fillMode = .backwards                                   // hidden below until its moment
+            l.add(j, forKey: Self.jumpKey)
             units[k].jumpStart = start
         }
         CATransaction.commit()
     }
 
-    /// Up from half a font size below with a small overshoot and settle; invisible until it starts.
-    private func addJump(to l: CALayer, at start: CFTimeInterval, rise: CGFloat) {
+    /// Up from half a font size below with a small overshoot and settle, fading in on the way up.
+    private func jump() -> CAAnimationGroup {
         let y = CAKeyframeAnimation(keyPath: "transform.translation.y")
         y.values = [-rise, rise * 0.22, -rise * 0.06, 0]
         y.keyTimes = [0, 0.55, 0.8, 1]
@@ -247,17 +187,88 @@ import OverlyricCore
         let g = CAAnimationGroup()
         g.animations = [y, o]
         g.duration = Self.jumpDuration
-        g.beginTime = l.convertTime(start, from: nil)
-        g.fillMode = .backwards                                       // hidden below until its moment
-        l.add(g, forKey: Self.jumpKey)
+        return g
     }
 
     func retime(_ state: LyricsState, context: RenderContext) {
-        guard lineIndex != nil, state.id == lineID, state.index == lineIndex else { return }
-        applyTiming(state)
+        guard let line, line.id == state.id, line.index == state.index else { return }
+        applyTiming(state.clock)
     }
 
-    func recolor(context: RenderContext) { recolorRegistered(context) }
+    // MARK: Line changes
+
+    /// Turns the current block into a ghost as it looks right now: a word still waiting for its moment
+    /// stays hidden (it must not pop up on the way out), a word mid-jump finishes its jump as it fades.
+    private func retire(_ old: QuietLayer) -> QuietLayer {
+        let now = CACurrentMediaTime()
+        for u in units {
+            guard let start = u.jumpStart, now < start + 0.01 else { continue }
+            u.layer.removeAnimation(forKey: Self.jumpKey)
+            u.layer.opacity = 0
+        }
+        ghosts.append(Ghost(block: old, still: still, ink: ink, layers: units.map(\.layer)))
+        return old
+    }
+
+    /// The outgoing line floats up over the transition and fades out in its first moments, so it never
+    /// shows through the new line's first word jumping into the same place.
+    private func leave(_ g: QuietLayer, travel: CGFloat) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self, weak g] in
+            guard let self, let g else { return }
+            self.dropGhost(g)
+        }
+        let y = g.position.y
+        g.position.y = y + travel
+        g.opacity = 0
+        let move = CABasicAnimation(keyPath: "position.y")
+        move.fromValue = y
+        move.toValue = y + travel
+        move.duration = transitionDuration
+        move.timingFunction = Self.ease
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = Self.fadeOutDuration
+        fade.timingFunction = Self.ease
+        let group = CAAnimationGroup()
+        group.animations = [move, fade]
+        group.duration = transitionDuration
+        g.add(group, forKey: "leave")
+        CATransaction.commit()
+    }
+
+    private func dropGhost(_ block: QuietLayer) {
+        guard let k = ghosts.firstIndex(where: { $0.block === block }) else { return }
+        drop(ghosts.remove(at: k))
+    }
+
+    private func clearGhosts() {
+        let all = ghosts
+        ghosts.removeAll()
+        all.forEach(drop)
+    }
+
+    private func drop(_ g: Ghost) {
+        if let still = g.still { forget(still) }
+        g.block.removeAllAnimations()
+        g.block.removeFromSuperlayer()
+    }
+
+    // MARK: Colour, words, teardown
+
+    func recolor(context: RenderContext) {
+        recolorRegistered(context)                // the still layers, and every block's shadow
+        restyle(ink, units.map(\.layer), context)
+        for g in ghosts { restyle(g.ink, g.layers, context) }
+    }
+
+    private func restyle(_ ink: LineInk?, _ layers: [GlyphLayer], _ ctx: RenderContext) {
+        guard let ink else { return }
+        ink.restyle(ctx)
+        for l in layers { l.setNeedsDisplay() }
+    }
 
     override func applyShadows(_ context: RenderContext) {
         if let block { context.applyShadow(to: block) }
@@ -265,13 +276,98 @@ import OverlyricCore
     }
 
     func currentWords() -> [(text: String, rect: CGRect)] {
-        if lineIndex != nil { return lineWords }
-        return units.first.map { wordsOf($0.layer) } ?? []
+        if line != nil { return lineWords }
+        return still.map(wordsOf) ?? []
     }
 
     override func teardown() {
         super.teardown()
-        block = nil; units.removeAll(); ghosts.removeAll(); lineWords.removeAll()
-        lineID = nil; lineIndex = nil
+        block = nil; still = nil; ink = nil; units.removeAll(); ghosts.removeAll(); lineWords.removeAll()
+        line = nil
+    }
+}
+
+// MARK: - Drawing words from one line layout
+
+/// A line laid out exactly as `TextLayout` lays it out (same attributes, width and TextKit setup), whose
+/// glyphs can be drawn a word at a time.
+private final class LineInk {
+    private let text: String
+    private let storage: NSTextStorage
+    private let manager = NSLayoutManager()
+    private let container: NSTextContainer
+    private let height: CGFloat
+
+    init(_ text: String, context ctx: RenderContext) {
+        self.text = text
+        storage = NSTextStorage(attributedString: ctx.attributed(text))
+        container = NSTextContainer(size: NSSize(width: ctx.wrapWidth, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        manager.ensureLayout(for: container)
+        height = ceil(manager.usedRect(for: container).height) + 2
+    }
+
+    /// Same text and geometry in the context's colour.
+    func restyle(_ ctx: RenderContext) {
+        storage.setAttributedString(ctx.attributed(text))
+    }
+
+    /// A character range split per visual line: its glyphs and their typeset extent in layer coordinates
+    /// (origin bottom-left, y up). The extent is the union of the selection rects, exact in any script and
+    /// writing direction; vertically it is the visual line.
+    func pieces(of characters: NSRange) -> [(glyphs: NSRange, rect: CGRect)] {
+        let glyphs = manager.glyphRange(forCharacterRange: characters, actualCharacterRange: nil)
+        var out: [(glyphs: NSRange, rect: CGRect)] = []
+        manager.enumerateLineFragments(forGlyphRange: glyphs) { _, used, _, lineGlyphs, _ in
+            let g = NSIntersectionRange(glyphs, lineGlyphs)
+            guard g.length > 0 else { return }
+            var x = CGRect.null
+            self.manager.enumerateEnclosingRects(forGlyphRange: g, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+                                                 in: self.container) { r, _ in x = x.union(r) }
+            guard !x.isNull else { return }
+            out.append((g, CGRect(x: x.minX, y: self.height - used.maxY, width: x.width, height: used.height)))
+        }
+        return out
+    }
+
+    /// Draws `glyphs` where the line has them, into a layer context in the line's layer coordinates.
+    func draw(_ glyphs: NSRange, in ctx: CGContext) {
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: height)
+        ctx.scaleBy(x: 1, y: -1)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        manager.drawGlyphs(forGlyphRange: glyphs, at: .zero)
+        NSGraphicsContext.restoreGraphicsState()
+        ctx.restoreGState()
+    }
+}
+
+/// Draws some glyphs of a `LineInk` at their place in the line: its bounds (whatever their origin) crop the
+/// line, they never shift it. No implicit animations.
+private final class GlyphLayer: CALayer {
+    var ink: LineInk? {
+        didSet { setNeedsDisplay() }
+    }
+    var glyphs = NSRange(location: 0, length: 0)
+
+    override init() {
+        super.init()
+        isOpaque = false
+    }
+
+    override init(layer: Any) {
+        super.init(layer: layer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    override func action(forKey event: String) -> CAAction? { nil }
+
+    override func draw(in ctx: CGContext) {
+        ink?.draw(glyphs, in: ctx)
     }
 }

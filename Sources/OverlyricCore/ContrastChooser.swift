@@ -19,10 +19,10 @@ public struct RGB: Equatable, Sendable {
     }
 }
 
-/// Picks a lyric colour that reads clearly on a given background. Colourful by design: a random pick
-/// from a curated palette of vivid colours (bright ones for dark backgrounds, deep ones for light
-/// backgrounds), restricted to those that clear a contrast threshold against the background and do not
-/// clash with its hue. The current colour is kept while it stays readable, so nothing flickers.
+/// Picks a lyric colour that reads clearly on a given background. Colourful by design: a vivid colour
+/// generated from anywhere on the colour wheel (bright for dark backgrounds, deep for light ones) that
+/// clears a contrast threshold against the background and doesn't clash with its hue. The current colour
+/// is kept while it stays readable, so nothing flickers.
 public enum ContrastChooser {
     // MARK: Colour science
 

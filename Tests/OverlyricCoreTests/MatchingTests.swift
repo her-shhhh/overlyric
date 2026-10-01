@@ -20,11 +20,6 @@ import Testing
         #expect(TrackNameCleaner.titleVariants("Yellow") == ["Yellow"])
     }
 
-    @Test func artistVariants() {
-        #expect(TrackNameCleaner.artistVariants("Lil Nas X, Jack Harlow") == ["Lil Nas X, Jack Harlow", "Lil Nas X"])
-        #expect(TrackNameCleaner.artistVariants("Coldplay") == ["Coldplay"])
-    }
-
     @Test func primaryArtistSplitsOnSpotifyCommaOnly() {
         #expect(TrackNameCleaner.primaryArtist("Lil Nas X, Jack Harlow & Someone") == "Lil Nas X")
         #expect(TrackNameCleaner.primaryArtist("Simon & Garfunkel") == "Simon & Garfunkel")

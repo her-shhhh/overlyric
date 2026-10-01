@@ -19,22 +19,13 @@ struct ColorPreset {
     ]
 }
 
-/// All user preferences, persisted in UserDefaults. Every setter posts `.overlyricSettingsDidChange`.
+/// All user preferences, persisted in UserDefaults. Every setter except `windowTop` (which the panel
+/// itself writes) posts `.overlyricSettingsDidChange`.
 final class Settings {
     static let shared = Settings()
     private let d = UserDefaults.standard
 
-    private init() {
-        // One-time migration from the unprefixed keys used by the first builds.
-        for (old, new) in [("enabled", Key.enabled), ("fontSize", Key.fontSize), ("colorRGB", Key.colorRGB),
-                           ("clickThrough", Key.clickThrough), ("centerX", Key.centerX), ("centerY", Key.centerY),
-                           ("hasCenter", Key.hasCenter)] {
-            if d.object(forKey: new) == nil, let v = d.object(forKey: old) {
-                d.set(v, forKey: new)
-                d.removeObject(forKey: old)
-            }
-        }
-    }
+    private init() {}
 
     static let minFontSize: CGFloat = 14
     static let maxFontSize: CGFloat = 160
@@ -48,11 +39,6 @@ final class Settings {
         static let topX = "overlyric.topX"
         static let topY = "overlyric.topY"
         static let hasTop = "overlyric.hasTop"
-        // Pre-top-anchor builds stored the window centre.
-        static let centerX = "overlyric.centerX"
-        static let centerY = "overlyric.centerY"
-        static let hasCenter = "overlyric.hasCenter"
-        static let autoContrast = "overlyric.autoContrast"   // pre-colorMode builds
         static let colorMode = "overlyric.colorMode"
         static let style = "overlyric.style"
         static let easterEggs = "overlyric.easterEggs"
@@ -96,13 +82,9 @@ final class Settings {
 
     /// Where the lyric colour comes from: a chosen colour, the screen behind the overlay, or the cover art.
     var colorMode: ColorMode {
-        get {
-            if let raw = d.string(forKey: Key.colorMode), let m = ColorMode(rawValue: raw) { return m }
-            return d.bool(forKey: Key.autoContrast) ? .autoContrast : .manual
-        }
+        get { ColorMode(rawValue: d.string(forKey: Key.colorMode) ?? "") ?? .manual }
         set { d.set(newValue.rawValue, forKey: Key.colorMode); notify() }
     }
-    var autoContrast: Bool { colorMode == .autoContrast }
 
     /// How the lyrics are presented.
     var style: LyricsStyle {
@@ -124,28 +106,15 @@ final class Settings {
     /// Top-centre of the overlay window in screen coordinates (the anchor that stays put as lines wrap).
     var windowTop: NSPoint? {
         get {
-            if d.bool(forKey: Key.hasTop) {
-                return NSPoint(x: d.double(forKey: Key.topX), y: d.double(forKey: Key.topY))
-            }
-            if d.bool(forKey: Key.hasCenter) {   // one-time migration from a centre (two-line block ≈ 4 × size tall)
-                let top = NSPoint(x: d.double(forKey: Key.centerX), y: d.double(forKey: Key.centerY) + 2 * fontSize)
-                d.set(Double(top.x), forKey: Key.topX)
-                d.set(Double(top.y), forKey: Key.topY)
-                d.set(true, forKey: Key.hasTop)
-                d.set(false, forKey: Key.hasCenter)
-                return top
-            }
-            return nil
+            guard d.bool(forKey: Key.hasTop) else { return nil }
+            return NSPoint(x: d.double(forKey: Key.topX), y: d.double(forKey: Key.topY))
         }
         set {
             if let p = newValue {
                 d.set(Double(p.x), forKey: Key.topX)
                 d.set(Double(p.y), forKey: Key.topY)
-                d.set(true, forKey: Key.hasTop)
-            } else {
-                d.set(false, forKey: Key.hasTop)
-                d.set(false, forKey: Key.hasCenter)
             }
+            d.set(newValue != nil, forKey: Key.hasTop)
         }
     }
 

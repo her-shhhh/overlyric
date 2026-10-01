@@ -4,7 +4,7 @@ import OverlyricCore
 
 /// The lyric presentation styles offered in the menu (Instagram-inspired).
 enum LyricsStyle: String, CaseIterable {
-    case classic, single, scroll, typewriter, karaoke, dynamic, cube
+    case classic, single, scroll, typewriter, karaoke, dynamic, pop, jump, glide, cube
 
     var title: String {
         switch self {
@@ -14,6 +14,9 @@ enum LyricsStyle: String, CaseIterable {
         case .typewriter: return "Typewriter"
         case .karaoke: return "Karaoke"
         case .dynamic: return "Dynamic"
+        case .pop: return "Pop"
+        case .jump: return "Jump"
+        case .glide: return "Glide"
         case .cube: return "Cube"
         }
     }
@@ -25,8 +28,11 @@ enum LyricsStyle: String, CaseIterable {
         case .scroll: return "The whole song drifting upwards"
         case .typewriter: return "Types out as it's sung"
         case .karaoke: return "Words light up as they're sung"
-        case .dynamic: return "Words pop in, big and bold"
-        case .cube: return "Lines roll over like a cube"
+        case .dynamic: return "Big billboard rows, words popping in"
+        case .pop: return "Words flash on one at a time"
+        case .jump: return "Words jump up into place as they are sung"
+        case .glide: return "Lyrics glide right to left like a ticker"
+        case .cube: return "Lines roll upwards like a cube"
         }
     }
 
@@ -38,6 +44,9 @@ enum LyricsStyle: String, CaseIterable {
         case .typewriter: return TypewriterRenderer()
         case .karaoke: return KaraokeRenderer()
         case .dynamic: return DynamicRenderer()
+        case .pop: return PopRenderer()
+        case .jump: return JumpRenderer()
+        case .glide: return GlideRenderer()
         case .cube: return CubeRenderer()
         }
     }
@@ -275,6 +284,63 @@ struct RenderContext {
         g.animations = [p, s, o]
         g.duration = duration
         g.timingFunction = Self.ease
+        l.add(g, forKey: key)
+        CATransaction.commit()
+    }
+
+    // MARK: Fade-through transitions
+
+    /// Position (top-centre anchor), uniform scale and opacity of a layer.
+    struct Pose {
+        var position: CGPoint
+        var scale: CGFloat
+        var opacity: Float
+    }
+
+    /// Ease-out cubic: a visible glide that settles softly (≈ 1 − (1 − t)³).
+    nonisolated(unsafe) static let glide = CAMediaTimingFunction(controlPoints: 0.33, 1, 0.68, 1)
+    nonisolated(unsafe) static let fadeOutCurve = CAMediaTimingFunction(controlPoints: 0, 0, 0.58, 1)
+
+    /// Fraction of the duration at which `glide` has covered `progress` of the distance.
+    static func glideTime(forProgress progress: CGFloat) -> Double {
+        let p = Double(min(max(progress, 0), 1))
+        return 1 - pow(1 - p, 1.0 / 3.0)
+    }
+
+    /// What a layer looks like on screen right now (its presentation if it is animating).
+    func currentPose(of l: CALayer) -> Pose {
+        let p = l.presentation() ?? l
+        let scale = (p.value(forKeyPath: "transform.scale") as? CGFloat) ?? 1
+        return Pose(position: p.position, scale: scale, opacity: p.opacity)
+    }
+
+    /// Moves a layer with a glide while its opacity follows its own window (`fadeDelay` … +`fadeDuration`),
+    /// so an outgoing and an incoming line never cross-dissolve on top of each other. Sets the model to
+    /// the end pose.
+    func move(_ l: CALayer, from: Pose, to: Pose, duration: TimeInterval,
+              fadeDelay: TimeInterval = 0, fadeDuration: TimeInterval? = nil,
+              fadeCurve: CAMediaTimingFunction? = nil,
+              key: String = "styleMove", completion: (() -> Void)? = nil) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock(completion)
+        l.position = to.position
+        l.transform = CATransform3DMakeScale(to.scale, to.scale, 1)
+        l.opacity = to.opacity
+        let p = CABasicAnimation(keyPath: "position")
+        p.fromValue = NSValue(point: from.position); p.toValue = NSValue(point: to.position)
+        let s = CABasicAnimation(keyPath: "transform.scale")
+        s.fromValue = from.scale; s.toValue = to.scale
+        for a in [p, s] { a.duration = duration; a.timingFunction = Self.glide }
+        let o = CABasicAnimation(keyPath: "opacity")
+        o.fromValue = from.opacity; o.toValue = to.opacity
+        o.beginTime = fadeDelay
+        o.duration = fadeDuration ?? max(0.01, duration - fadeDelay)
+        o.timingFunction = fadeCurve ?? Self.glide
+        o.fillMode = .backwards                 // hold the start opacity through the delay
+        let g = CAAnimationGroup()
+        g.animations = [p, s, o]
+        g.duration = max(duration, fadeDelay + o.duration)
         l.add(g, forKey: key)
         CATransaction.commit()
     }
