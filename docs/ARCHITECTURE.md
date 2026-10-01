@@ -1,173 +1,91 @@
-# Overlyric — Architecture & Design (v0.1, 2026-10-01 — updated after build + reviews)
+# Overlyric — architecture
 
-## Goal
-A macOS menu-bar app that overlays the synced lyrics of the song currently playing in Spotify
-on top of everything on screen: two lines at a time (current + next), transparent background,
-only the text is solid, draggable anywhere, pinch-to-zoom live, colour selectable, toggled from
-a menu-bar (top-right) status item.
-
-## Non-goals (v0.1)
-No Spotify login/OAuth, no lyrics editing, no word-level karaoke highlight, no Windows/Linux.
-
-## Platform / toolchain
-- macOS 14+ (dev machine: macOS 26.5.2, Apple Silicon), Swift 6.2, SwiftPM (Command Line Tools only, no Xcode).
-- Pure AppKit (no SwiftUI) for predictable window-level / gesture behaviour.
-- Build: `swift build -c release` → `scripts/build-app.sh` assembles `Overlyric.app`
-  (Info.plist: LSUIElement=true, NSAppleEventsUsageDescription, CFBundleIdentifier com.harsh.overlyric),
-  ad-hoc codesign, install to /Applications (fallback ~/Applications), launch via `open`.
+A macOS menu-bar app (Swift 6.2, SwiftPM, AppKit + Core Animation; builds with the Command Line Tools
+alone) that floats the synced lyrics of the song playing in the Spotify desktop app above everything.
 
 ## Data flow
+
 ```
-Spotify.app ──(DistributedNotification com.spotify.client.PlaybackStateChanged)──┐
-Spotify.app ──(AppleScript poll every ~2s: state, position, track id/name/artist/album/duration)──┤
-                                                                                                  ▼
-                                                                                   SpotifyMonitor (state model)
-                                                                                                  │ track change
-                                                                                                  ▼
-                                                                    LyricsService (LRCLIB client + cache) ──► SyncedLyrics
-                                                                                                  │
-                                                                              LyricsController (100 ms display tick)
-                                                                                                  │ (current,next) line change
-                                                                                                  ▼
-                                                                                   OverlayPanel / OverlayView (AppKit)
-StatusMenuController (NSStatusItem) ──► Settings (UserDefaults) ──► OverlayView / Controller
+Spotify.app ── PlaybackStateChanged notification (play/pause/track; no permission) ──┐
+Spotify.app ── ScriptingBridge reads on a serial queue (state+position every 2 s) ────┤
+                                                                                       ▼
+                                                                         SpotifyMonitor (PlaybackSnapshot)
+                                                                                       │ track change
+                                                                                       ▼
+                                          LyricsService: memory cache → disk cache → lrclib.net (get → search)
+                                                                                       │ SyncedLyrics
+                                                                                       ▼
+            LyricsController: PlaybackClock + current line → StyleContent; one timer per line boundary
+                                                                                       │
+                                                                                       ▼
+          OverlayView (host: sizing, mouse gate, drag/click/⌘-scroll) → StyleRenderer (one per style)
+                                                                                       ▲
+     StatusMenuController · Settings (UserDefaults) · BackgroundSampler (Auto colour) · EasterEggs
 ```
 
-## Components
-### SpotifyMonitor
-- State: `track {id,name,artist,album,durationMs}?`, `isPlaying`, `position`, `positionTimestamp`.
-  `extrapolatedPosition(now) = isPlaying ? position + (now - positionTimestamp) : position`.
-- Source A (push, no permission): `DistributedNotificationCenter` name `com.spotify.client.PlaybackStateChanged`
-  userInfo keys (to be verified empirically): "Track ID", "Name", "Artist", "Album", "Duration"(ms),
-  "Player State" ("Playing"/"Paused"/"Stopped"), "Playback Position"(s).
-- Source B (poll, needs Automation TCC permission, prompts once): compiled `NSAppleScript`
-  `tell application "Spotify"` → player state, player position, current track fields. Runs on a
-  dedicated serial background queue so a TCC prompt or a slow Spotify never blocks the UI.
-  Only runs when Spotify is running (checked with NSRunningApplication, never launches Spotify).
-  Poll interval 2 s while enabled & playing; 5 s while paused; stops when overlay disabled.
-  If the AppleScript is denied (-1743) we keep notification-only mode and tell the user in the menu
-  ("press play/pause once to sync").
-- Drift rule: if |polled - extrapolated| > 0.5 s, snap to polled.
-- Spotify quit (NSWorkspace.didTerminateApplicationNotification) → clear state, hide overlay.
+## Modules
 
-### LyricsService (LRCLIB)
-- `GET https://lrclib.net/api/get?track_name&artist_name&album_name&duration` (exact match)
-  → fallback `GET /api/get` without album → fallback `/api/search?track_name&artist_name` choose
-  result with `syncedLyrics != null` and |duration - ours| ≤ 3 s (else closest) → fallback with
-  cleaned title (strip " - Remastered…", "(feat. …)", "[…]").
-- Required `User-Agent: Overlyric/0.1 (https://github.com/…)`.
-- Per-track in-memory cache incl. negative results (per app session). Request coalescing: a newer
-  track cancels/ignores an in-flight older fetch (generation counter).
-- Parse `syncedLyrics` (LRC): `[mm:ss.xx]`/`[mm:ss.xxx]`, multiple tags per line, empty text = ♪ gap,
-  sorted by time. `plainLyrics`-only tracks are treated as "no synced lyrics" (we cannot time them).
+**OverlyricCore** (pure Foundation, unit-tested): LRC parser (multiple tags, word tags stripped, BOM,
+offsets, equal timestamps merged), `SyncedLyrics` (binary-search current line), `TrackNameCleaner` and
+`LyricsMatcher` (lrclib's normalisation, 3-tier duration matching), `ContrastChooser` (WCAG maths and the
+readable random colour generator), `ArtworkColor`, `ShakeDetector`, `LyricsDiskCache`.
 
-### LyricsController
-- Owns display tick (100 ms, `.common` run-loop mode, only while enabled AND Spotify state known).
-- Computes `(currentIdx, nextIdx)` via binary search on line times; pushes to the view only when
-  the pair changes (so redraws ≈ once per lyric line).
-- States shown by the overlay: lines / "♪" (gap before first line or instrumental) /
-  dim small "No synced lyrics for this track" / hidden (Spotify not running or stopped or disabled).
+**Spotify** — `SpotifyMonitor` merges the push notification with ScriptingBridge polls (light poll: state +
+position; full poll: + track; escalates once on any disagreement). Spotify posts no notification on seek,
+so the light poll catches seeks and drift (> 0.4 s). Reads target Spotify's pid so they can never launch it.
 
-### OverlayPanel (NSPanel)
-- styleMask [.borderless, .nonactivatingPanel]; isOpaque=false; backgroundColor=.clear; hasShadow=false;
-  level=.statusBar; collectionBehavior [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary];
-  hidesOnDeactivate=false; isFloatingPanel=true; isMovableByWindowBackground=true; ignoresMouseEvents toggle.
-- Sized-to-content: the window rect is exactly the text block + 14 pt padding, re-laid-out around a
-  fixed centre whenever text or zoom changes. Therefore no transparent dead-zone can swallow clicks.
-- Drag: mouseDown → `performDrag(with:)`; frame persisted on windowDidMove.
-- Pinch: `magnify(with:)` → fontSize *= (1+magnification), clamped 14…160 pt, live, persisted on gesture end.
-- Lock/click-through: menu toggle sets `ignoresMouseEvents = true`.
+**Lyrics** — `LyricsService` tries exact `/api/get` variants then `/api/search`, sequentially with 250 ms
+spacing, honouring 429/503 Retry-After, 15 s per request. Results go to memory and to
+`~/Library/Caches/com.harsh.overlyric/lyrics` (found lyrics forever, "not found" for 2 days). Network
+failures are retried by the controller at 3, 8, 20, 45 and 90 s while the song plays (♪ meanwhile).
 
-### OverlayView (design — Instagram-story lyric look, "very neat")
-- Type: SF Rounded, heavy weight for current line, semibold for next; centered; tight leading;
-  slight negative tracking. Wrap width = clamp(fontSize × 16, 320, 0.8 × screen width).
-- Current line: chosen colour @100 %; next line: same colour @ 55 % and 0.85 × size.
-- Legibility over any background: soft shadow (black 55 %, radius ≈ fontSize/6, offset y −1) — no boxes.
-- Line change animation (250 ms, ease-out): next line slides up into the current slot while brightening,
-  new next line fades in from below, old current line fades out upward. Implemented with layer-backed
-  NSTextField labels + NSAnimationContext. Zoom changes are applied without animation (live).
-- "♪" glyph for gaps. Dim small italic status line for "no lyrics".
+**Timing** — no periodic tick. The controller arms one timer for the next line boundary (or the encore
+window) and re-arms on every state change. A `PlaybackClock` maps Spotify time to `CACurrentMediaTime`, so
+time-driven styles (typewriter, karaoke sweep, word pops, drift, ticker) run as Core Animation timelines on
+the compositor; pause/seek re-time them (`retime`).
 
-### StatusMenuController (NSStatusItem, top-right menu bar)
-Menu: [✓] Show Lyrics · status line (track / "Spotify not running") · Colour ▸ (8 presets + Custom…
-via NSColorPanel) · Text Size ▸ (Bigger ⌘+, Smaller ⌘−, Reset) · [ ] Lock position (click-through) ·
-Reset Position · [ ] Launch at Login (SMAppService) · Quit.
-Icon: SF Symbol "music.mic" (full when ON, 40 % alpha when OFF).
+**Overlay** — `OverlayPanel`: borderless non-activating `NSPanel`, level `.statusBar`, on all Spaces and
+over full-screen apps, never key, sized exactly to the text plus padding for shadows and transitions.
+It is anchored at its top-centre (lines wrap downwards), clamped so the *text* can reach the left, right and
+bottom screen edges but never covers the menu bar. `OverlayView` is layer-hosting; it owns the current
+renderer, keeps the window at max(old, new) size during a line change and shrinks it after, and runs a
+**mouse gate**: the window takes the mouse only while the pointer is over the words (global mouse-moved
+monitor + tracking area), so the transparent padding is click-through. Click = open Spotify; drag
+(manual tracking loop) = move; ⌘ + scroll = resize. Lock = everything click-through.
 
-### Settings (UserDefaults)
-enabled(true), fontSize(34), colorRGBA(white), clickThrough(false), windowOrigin(bottom-centre, 120 pt up), launchAtLogin(false).
+**Styles** (`Styles/`) — `StyleRenderer` protocol + `BaseRenderer` toolkit. A renderer's root layer has
+its origin at the top-centre of the text block (bounds origin trick), so resizing never shifts what is
+drawn. `TextLayout` wraps TextKit and reports geometry from typeset positions. Styles: Two Lines, One
+Line, Scrolling (teleprompter), Typewriter, Karaoke (sweep), Dynamic (billboard rows), Pop, Jump,
+Glide, Cube.
 
-## Threading
-Main: AppKit, controller, timers, state application. Background serial queue: AppleScript polling.
-URLSession completion → hop to main. All state mutation on main.
+**Colour** — Manual, **Auto** (`BackgroundSampler`: one-shot ScreenCaptureKit captures of the region behind
+the window, excluding it; median per-pixel luminance decides bright vs deep text with hysteresis; colours
+are generated from the whole spectrum and kept while readable; re-sampled on app/Space switches, window
+stack changes behind the lyrics (cheap CGWindowList check), moves, and every 4 s while playing; never
+captures without a grant), or **Artwork** (dominant vivid hue of the cover, brightened).
 
-## Failure handling
-| Failure | Behaviour |
-|---|---|
-| Spotify not installed/running | Overlay hidden; menu status says so. |
-| Automation permission denied | Notification-only mode; menu says "press play/pause once to sync". |
-| No synced lyrics | Dim "No synced lyrics" line; cached negative for the session. |
-| Network down | Same as no lyrics; retried on next track change. |
-| Window off-screen after display change | Re-clamped to visible frame on show. |
+**Easter eggs** — sparkle words (stars/rain/fire/love/snow → particle flourish), shake the lyrics while
+dragging, the third play in a row, and an encore offer after the last line. ⌥-click the menu to switch
+them off.
 
-## Test plan
-- Unit (swift test): LRC parser (formats, multi-tag, ms precision, empty lines, ordering), sync index
-  lookup (before first, between, after last, exact boundary), title cleaning, LRCLIB JSON decoding,
-  position extrapolation (playing/paused).
-- Integration (QA agent on this Mac): build+bundle+sign+launch; drive Spotify via AppleScript to a
-  known track with synced lyrics; confirm overlay window exists at expected level (CGWindowList);
-  screenshot; toggle off/on from menu; colour change persists after relaunch; pinch simulated via
-  menu zoom; lock toggle; Spotify quit hides overlay.
+**Onboarding** — first launch shows a one-time hello in the overlay; running from a disk image or App
+Translocation offers to move the app to /Applications.
 
+## macOS gotchas (all hit and verified on macOS 26)
 
----
-
-## What changed during the build (verified on this Mac, macOS 26.5)
-
-1. **NSAppleScript off the main thread hangs** (AESendMessage never returns, nondeterministic). Replaced with
-   **ScriptingBridge KVC reads** on a serial queue, targeting the Spotify *pid* (never launches Spotify).
-   `playerState` is an NSNumber four-char code (`kPSP`/`kPSp`/`kPSS`); `duration` is ms; position is float32 s.
-2. **Spotify posts no notification on seek** and no heartbeat — only play/pause/track change. Hence the
-   light poll (state + position, ~16 ms) every 2 s, full read (+track) at start / on disagreement / every 10th.
-3. **No periodic display tick.** A one-shot timer fires exactly at the next line boundary and is re-armed on
-   every snapshot change. Idle cost is zero while paused or hidden.
-4. **Overlay is a layer-hosting view of CALayers** (not NSTextFields): AppKit label animations were not smooth
-   enough. Each line is drawn with AppKit text into its own layer; transitions animate position / scale /
-   opacity on the compositor (0.5 s, ease-out). The next line is rendered at full size and scaled by a
-   transform so its rise into the current slot is a continuous scale-up of an identical bitmap.
-5. **`isFloatingPanel = true` resets `level`** — set the level afterwards.
-6. **`performDrag(with:)` is a no-op** for a non-key panel of an inactive app; `isMovableByWindowBackground`
-   + `mouseDownCanMoveWindow` is what actually drags the window.
-7. **Pinch delivery** to an inactive app's non-key panel is not guaranteed by AppKit docs (the archived
-   gesture guide says gestures go "to the active application"). Three paths cover every routing:
-   `NSMagnificationGestureRecognizer` on the view (if the system routes the pinch to the window under the
-   pointer), a global `.magnify` monitor (NSEvent.h: global monitors receive copies of events posted to
-   *other* applications; only key events need Accessibility) that zooms when the pointer is over the lyrics,
-   and ⌘+scroll. The menu also has a live slider (14–160 pt) for precise sizing.
-8. **Never add a CAAnimation under the key `"transition"`.** That is `kCATransition`: CA then cross-fades
-   the layer's whole previous rendering with the new one, which looked like a doubled, ghosted line.
-9. **Implicit actions** are disabled on line layers (`action(forKey:) → nil`), otherwise a redraw
-   cross-fades old and new text.
-10. **Window sizing is anchored on the user's chosen centre** (not the current frame centre), so clamping at
-    a screen edge never ratchets the overlay away from the edge; padding grows with font size so the shadow
-    and the rising/fading lines are not clipped by the window bounds.
-11. **lrclib**: exact `/api/get` has a ±2 s duration window and no fuzzy matching; `/api/search` is BM25 with
-    heavy pollution, so a 3-tier duration filter (≤2 s, ≤5 s, ≤15 s + exact normalised title) picks the record;
-    requests are sequential (250 ms spacing), 429/503 honour Retry-After; transport/decode failures are
-    surfaced (`.failed`, retried later) rather than cached as "no lyrics"; superseded fetches are cancelled.
-12. **Ad-hoc signing** binds the TCC Automation grant to the cdhash → each rebuild re-prompts once. Use
-    `OVERLYRIC_SIGN_ID` with a self-signed code-signing certificate for a stable identity.
-13. UserDefaults keys are prefixed (`overlyric.*`); the first builds' unprefixed keys are migrated once.
-
-## Auto-contrast colour (added the same day)
-
-- `ContrastChooser` (Core, unit-tested): WCAG luminance, HSB round-trip, polarity with hysteresis band
-  [0.14, 0.23] (black and white have equal contrast at L≈0.18), complementary hue; light text kept at
-  ≥85 % of white's luminance, dark text at ≤0.8 % — i.e. always ≥80 % of the best achievable contrast.
-- `BackgroundSampler`: one-shot `SCScreenshotManager.captureImage` of the window rect (48×24 output,
-  `excludingWindows:` our own panel, `captureResolution = .nominal`) every 1.5 s while visible, plus
-  debounced kicks on app activation, Space change, window move/resize. Mean sRGB + mean per-pixel
-  luminance → chooser; applied only when polarity flips or the colour moves by > 0.06.
-- Permission: `CGPreflightScreenCaptureAccess()` gate; `CGRequestScreenCaptureAccess()` once per process
-  when Auto is turned on; the Colour submenu shows the state (needs permission / quit & reopen / sampling).
-- Colour changes cross-fade via a `CATransition` on the root layer (0.45 s).
+- `NSAppleScript` deadlocks off the main thread → ScriptingBridge on a serial queue.
+- `isFloatingPanel = true` resets `level`; set the level after it.
+- `performDrag(with:)` does nothing for a never-key panel of an inactive app → manual tracking loop.
+- Trackpad pinch (magnify) events are never delivered to a background overlay (only to the active app;
+  global monitors don't see them) → ⌘ + scroll and a menu slider instead.
+- Never add a `CAAnimation` under the key `"transition"` (it is `kCATransition`: a whole-layer cross-fade).
+  Disable implicit actions on every layer we own, including `sublayers` on the root.
+- Glyph bounding boxes are ~3× too wide for Devanagari; use line-fragment used rects and glyph locations.
+- An explicitly set `ignoresMouseEvents = false` makes the transparent padding swallow clicks → mouse gate.
+- `CGPreflightScreenCaptureAccess` is cached per process; a grant made while running needs a reopen. Any
+  capture attempt without a grant can re-show the system dialog → never capture without a grant.
+- macOS keys permissions on the designated requirement; the default ad-hoc one is the build hash, so every
+  build silently loses its grants → ad-hoc sign with `designated => identifier "com.harsh.overlyric"`.
+- `swift build --arch arm64 --arch x86_64` needs Xcode → build each triple and `lipo` (scripts/release.sh).
+- XCTest isn't in the Command Line Tools; Swift Testing is, with explicit framework flags (scripts/test.sh).

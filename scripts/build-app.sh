@@ -16,10 +16,19 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-# Ad-hoc signature (no certificates, no keychain). macOS asks for each permission on first use.
+# Ad-hoc signature (no certificates, no keychain) with an explicit designated requirement that names
+# only the bundle identifier. macOS keys permissions (Automation, Screen Recording) on the designated
+# requirement; the default ad-hoc one is the build's hash, which changes every build and silently
+# invalidates the user's grants. This one stays the same across builds, so a permission is granted once.
 # For a release signed with a paid Apple Developer ID: OVERLYRIC_SIGN_ID="Developer ID Application: …"
 SIGN_ID="${OVERLYRIC_SIGN_ID:--}"
 echo "▸ codesign ($SIGN_ID)"
-codesign --force --sign "$SIGN_ID" --identifier com.harsh.overlyric \
-  --entitlements Resources/Overlyric.entitlements "$APP"
+if [ "$SIGN_ID" = "-" ]; then
+  codesign --force --sign - --identifier com.harsh.overlyric \
+    -r='designated => identifier "com.harsh.overlyric"' \
+    --entitlements Resources/Overlyric.entitlements "$APP"
+else
+  codesign --force --sign "$SIGN_ID" --identifier com.harsh.overlyric --options runtime \
+    --entitlements Resources/Overlyric.entitlements "$APP"
+fi
 codesign --verify --deep --strict "$APP" && echo "✓ built $APP"

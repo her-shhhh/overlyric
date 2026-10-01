@@ -77,7 +77,13 @@ chmod -R u+rwX,go+rX "$APP"   # Gatekeeper must be able to read the signature as
 # 3. Sign. Ad-hoc ("-") needs no certificate; a Developer ID also gets the hardened runtime + secure
 #    timestamp that notarization requires (the entitlements already allow Apple Events to Spotify).
 SIGN_ARGS=(--force --sign "$SIGN_ID" --identifier "$BUNDLE_ID" --entitlements Resources/Overlyric.entitlements)
-[ "$SIGN_ID" != "-" ] && SIGN_ARGS+=(--options runtime --timestamp)
+if [ "$SIGN_ID" = "-" ]; then
+  # Ad-hoc: name only the bundle id in the designated requirement. macOS keys permissions on it; the
+  # default ad-hoc requirement is the build's hash, so every update would silently lose the grants.
+  SIGN_ARGS+=(-r="designated => identifier \"$BUNDLE_ID\"")
+else
+  SIGN_ARGS+=(--options runtime --timestamp)
+fi
 echo "▸ codesign ($SIGN_ID)"
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --deep --strict "$APP" || die "signature does not verify"
@@ -115,9 +121,12 @@ Tips
 - Drag the lyrics to move them.
 - Hold Cmd and scroll on the lyrics to make them bigger or smaller.
 - Click the lyrics to jump to Spotify.
+- Lyrics Style in the menu has 10 looks (Typewriter, Karaoke, Pop...).
 - Screen Recording permission is only asked for if you turn on
   Lyrics Colour > Auto (it peeks at a tiny patch behind the lyrics to
-  pick a colour you can read).
+  pick a colour you can read). After allowing it, reopen Overlyric.
+- Lyrics come from lrclib.net (free, no login). No Spotify account
+  access is needed or used.
 
 Enjoy!
 EOF
