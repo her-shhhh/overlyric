@@ -78,6 +78,7 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through to what's underneath. |
 | **Reset Position** | Back to the bottom-centre of the screen. |
 | **Launch at Login** | Starts Overlyric when you log in (needs the app in Applications). |
+| **Read This or Hum Forever…** | Opens the guide: the story, the setup and every control, any time. |
 
 ### Styles
 
