@@ -63,7 +63,9 @@ Glide, Cube.
 the window, excluding it; median per-pixel luminance decides bright vs deep text with hysteresis; colours
 are generated from the whole spectrum and kept while readable; re-sampled on app/Space switches, window
 stack changes behind the lyrics (cheap CGWindowList check), moves, and every 4 s while playing; never
-captures without a grant), or **Artwork** (dominant vivid hue of the cover, brightened).
+captures without a grant), or **Artwork** (dominant vivid hue of the cover, brightened). Colour changes
+"dip": the stage fades to a low opacity, the colour swaps, and it fades back (a `CATransition` snapshot
+would double moving lyrics).
 
 **Easter eggs** — sparkle words (stars/rain/fire/love/snow → particle flourish), shake the lyrics while
 dragging, the third play in a row, and an encore offer after the last line. ⌥-click the menu to switch
@@ -71,6 +73,20 @@ them off.
 
 **Onboarding** — first launch shows a one-time hello in the overlay; running from a disk image or App
 Translocation offers to move the app to /Applications.
+
+## Mouse & menu
+
+Right-click / Control-click on the lyrics opens the same menu as the menu-bar icon (useful when the icon
+hides behind the notch). Opening Overlyric while it already runs hands off to the running copy and quits.
+
+## QA harness
+
+`tools/style-harness/run.sh [out]` compiles the real renderers with a mini host and renders every style
+offscreen through CARenderer (no windows, no permissions): Latin advance, wrapping Hindi advance, into/out
+of an instrumental gap, progress through a line, and pause (asserts two paused frames are identical).
+Strips land in `/tmp/overlyric-style-frames` (one PNG per style × scenario). Rule learned the hard way:
+attach the layer tree to the CARenderer *before* triggering a transition — committing animations on a
+detached tree completes them instantly.
 
 ## macOS gotchas (all hit and verified on macOS 26)
 

@@ -25,13 +25,9 @@ enum Onboarding {
         alert.addButton(withTitle: "Not Now")
         guard alert.runModal() == .alertFirstButtonReturn else { return false }
 
-        let fm = FileManager.default
         let destination = URL(fileURLWithPath: "/Applications/Overlyric.app")
         do {
-            if fm.fileExists(atPath: destination.path) {
-                try fm.trashItem(at: destination, resultingItemURL: nil)
-            }
-            try fm.copyItem(at: Bundle.main.bundleURL, to: destination)
+            try install(at: destination)
         } catch {
             let failed = NSAlert()
             failed.messageText = "Couldn't move Overlyric"
@@ -39,9 +35,37 @@ enum Onboarding {
             failed.runModal()
             return false
         }
-        // An older copy may still be running (from the bundle just trashed): it quits too, so the moved
-        // copy starts as the only one.
-        return NSApp.relaunch(destination, quitting: otherInstances)
+        // Started from a disk image: eject it once this copy has quit.
+        let volume = Bundle.main.bundlePath.hasPrefix("/Volumes/")
+            ? "/Volumes/" + (Bundle.main.bundlePath.dropFirst("/Volumes/".count).split(separator: "/").first.map(String.init) ?? "")
+            : nil
+        // An older copy may still be running: it quits too, so the moved copy starts as the only one.
+        return NSApp.relaunch(destination, quitting: otherInstances, thenEject: volume)
+    }
+
+    /// Puts this version at `destination` (skipping the copy when the same version is already there) and
+    /// clears the "downloaded from the internet" flag on it. That flag is what makes macOS run a copied
+    /// app from a temporary location or block it again; the user has already approved this app by
+    /// opening it, so the installed copy shouldn't carry the flag.
+    private static func install(at destination: URL) throws {
+        let fm = FileManager.default
+        if !isSameVersion(at: destination) {
+            if fm.fileExists(atPath: destination.path) {
+                try fm.trashItem(at: destination, resultingItemURL: nil)
+            }
+            try fm.copyItem(at: Bundle.main.bundleURL, to: destination)
+        }
+        let xattr = Process()
+        xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        xattr.arguments = ["-dr", "com.apple.quarantine", destination.path]
+        try xattr.run()
+        xattr.waitUntilExit()
+    }
+
+    private static func isSameVersion(at url: URL) -> Bool {
+        guard let other = Bundle(url: url)?.infoDictionary, let mine = Bundle.main.infoDictionary else { return false }
+        return other["CFBundleShortVersionString"] as? String == mine["CFBundleShortVersionString"] as? String
+            && other["CFBundleVersion"] as? String == mine["CFBundleVersion"] as? String
     }
 
     /// If a copy launched earlier is running, opens that one (which shows its menu) and quits this one.

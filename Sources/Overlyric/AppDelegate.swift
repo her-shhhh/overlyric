@@ -33,16 +33,18 @@ extension NSApplication {
     /// has exited, so two copies never run side by side. Returns false, and quits nothing, if the helper
     /// that reopens the app can't be started.
     @discardableResult
-    func relaunch(_ bundle: URL = Bundle.main.bundleURL, arguments: [String] = [], quitting others: [NSRunningApplication] = []) -> Bool {
+    func relaunch(_ bundle: URL = Bundle.main.bundleURL, arguments: [String] = [], quitting others: [NSRunningApplication] = [],
+                  thenEject volume: String? = nil) -> Bool {
         let pids = ([getpid()] + others.map(\.processIdentifier)).map(String.init).joined(separator: " ")
         let args = arguments.isEmpty ? "" : " --args " + arguments.joined(separator: " ")
+        let eject = volume == nil ? "" : "; /bin/sleep 1; /usr/bin/hdiutil detach \"$1\" -quiet"
         let helper = Process()
         helper.executableURL = URL(fileURLWithPath: "/bin/sh")
         // Waits for each process (at most ~10 s each), then opens the bundle, which is passed as $0.
         helper.arguments = ["-c", """
             for p in \(pids); do n=0; while /bin/kill -0 $p 2>/dev/null && [ $n -lt 100 ]; do \
-            /bin/sleep 0.1; n=$((n+1)); done; done; /usr/bin/open "$0"\(args)
-            """, bundle.path]
+            /bin/sleep 0.1; n=$((n+1)); done; done; /usr/bin/open "$0"\(args)\(eject)
+            """, bundle.path] + (volume.map { [$0] } ?? [])
         do {
             try helper.run()
         } catch {
