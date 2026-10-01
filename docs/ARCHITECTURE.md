@@ -75,6 +75,13 @@ dragging, the third play in a row, and an encore offer after the last line. Hold
 Translocation offers to move the app to /Applications: it copies itself there (or reuses an identical
 version), clears the quarantine flag on the installed copy, relaunches from there and ejects the source DMG.
 
+**The guide** — one source, `Resources/friends-readme.txt` (plain ASCII, quirky, story-first).
+`scripts/render-readme.sh` fills in the version / minimum macOS and writes it twice per build: inside the app
+(`Contents/Resources/Read This or Hum Forever.txt`) and next to the app in the DMG. Menu › *Read This or Hum
+Forever…* shows it in `GuideWindow`: `GuideDocument` (Core, tested) parses headings / paragraphs / numbered and
+nested lists, `Typography.prettify` adds real quotes, ⌘ and dashes, and the window typesets it (gold accents,
+bold quoted warnings, light/dark). Text in a window can't be edited, so the app's signature can't be broken.
+
 ## Mouse & menu
 
 Right-click / Control-click on the lyrics opens the same menu as the menu-bar icon (useful when the icon
