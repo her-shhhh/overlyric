@@ -1,4 +1,8 @@
-# Overlyric — status (as of 2026-10-02, version 1.1.2)
+# Overlyric — status (as of 2026-10-02, version 1.1.3)
+
+## 1.1.3 (2026-10-02)
+- Story in the guide and README no longer carries the friends-only Anuv Jain inside joke (the guide gets shared
+  beyond the original friend group); replaced with a line anyone gets.
 
 ## 1.1.2 (2026-10-02)
 - Menu › **Read This or Hum Forever…** opens the guide in its own designed window (app icon + title, real
