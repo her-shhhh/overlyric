@@ -50,9 +50,8 @@
    Developer ID cert from an existing team); `release.sh` already supports `OVERLYRIC_SIGN_ID` +
    `NOTARY_PROFILE`; (b) free one-line Terminal installer (curl-downloaded files aren't quarantined → no
    warning) — needs a public download URL; (c) both.
-2. **Package for friends to avoid the in-DMG loop:** (a) ship a .zip instead of a DMG (Safari auto-extracts
-   to Downloads, a writable place, so Open Anyway sticks and the app's own "Move to Applications" offer
-   finishes the install) or (b) a styled DMG with a big drag-to-Applications arrow (dmgbuild, no Finder
+2. **Package for friends to avoid the in-DMG loop:** shipping a .zip was offered and declined (keep the DMG).
+   Remaining free option: a styled DMG with a big drag-to-Applications arrow (dmgbuild, no Finder
    scripting); notarization (decision 1) removes the problem entirely.
 3. Version number for the friends release (0.1.x → 1.0.0?).
 

@@ -100,9 +100,9 @@ cat > "$README" <<EOF
 Overlyric $VERSION - Spotify lyrics floating on your screen
 Needs macOS ${MIN_OS%%.*} or later (Apple Silicon or Intel) and the Spotify desktop app.
 
-1. Drag Overlyric onto the Applications folder in this window
-   (or just double-click Overlyric here - it will offer to move
-   itself into Applications; click "Move to Applications").
+1. Drag Overlyric onto the Applications folder in this window.
+   Don't double-click it here: macOS won't remember your approval
+   for an app opened inside this window and keeps blocking it.
 
 2. The first time you open it, macOS blocks it because it is not
    from the App Store. This happens only once:
