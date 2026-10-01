@@ -4,11 +4,12 @@
 
 ## How this happened
 
-I always have music on while I work, and a song is twice as good when I can sing along. These days most
-of my singing happens between Claude sessions: Claude writes the code, I perform for an audience of
-zero. The problem? I never knew the words, so it was confident humming and the odd made-up line. So I
-asked Claude to fix that too, and it built this. Yes, Claude built its own karaoke machine for the
-breaks it gives me. Now the lyrics float right on my screen, and the breaks are louder.
+I always have music on while I work, and a song is twice as good when I can sing along. Today at the
+office, in one of those long "Claude is cooking, please wait" breaks, my songs were playing and I couldn't
+sing a single line. I never know the words, and Spotify's lyrics view would swallow half my tiny laptop
+screen. So, bored and armed with the shiny new Ultracode mode on Claude Fable, I thought: let's one-shot a
+fix. Reader, it was not one shot. It was hours of very dedicated "work". But Claude built its own karaoke
+machine for the breaks it gives me, and now the lyrics float right on my screen. My colleagues are thrilled.
 
 ## What it is
 
