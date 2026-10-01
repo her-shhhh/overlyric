@@ -158,3 +158,16 @@ URLSession completion → hop to main. All state mutation on main.
 12. **Ad-hoc signing** binds the TCC Automation grant to the cdhash → each rebuild re-prompts once. Use
     `OVERLYRIC_SIGN_ID` with a self-signed code-signing certificate for a stable identity.
 13. UserDefaults keys are prefixed (`overlyric.*`); the first builds' unprefixed keys are migrated once.
+
+## Auto-contrast colour (added the same day)
+
+- `ContrastChooser` (Core, unit-tested): WCAG luminance, HSB round-trip, polarity with hysteresis band
+  [0.14, 0.23] (black and white have equal contrast at L≈0.18), complementary hue; light text kept at
+  ≥85 % of white's luminance, dark text at ≤0.8 % — i.e. always ≥80 % of the best achievable contrast.
+- `BackgroundSampler`: one-shot `SCScreenshotManager.captureImage` of the window rect (48×24 output,
+  `excludingWindows:` our own panel, `captureResolution = .nominal`) every 1.5 s while visible, plus
+  debounced kicks on app activation, Space change, window move/resize. Mean sRGB + mean per-pixel
+  luminance → chooser; applied only when polarity flips or the colour moves by > 0.06.
+- Permission: `CGPreflightScreenCaptureAccess()` gate; `CGRequestScreenCaptureAccess()` once per process
+  when Auto is turned on; the Colour submenu shows the state (needs permission / quit & reopen / sampling).
+- Colour changes cross-fade via a `CATransition` on the root layer (0.45 s).

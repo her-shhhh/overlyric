@@ -31,13 +31,23 @@ Menu bar (top-right, the 🎤 icon):
 |---|---|
 | **Show Lyrics** | The on/off toggle. The icon dims when off. |
 | status lines | What's playing and whether synced lyrics were found. |
-| **Lyrics Colour ▸** | 8 presets + *Custom…* (system colour picker, live). |
+| **Lyrics Colour ▸** | **Auto — contrast with what's behind** (reads the screen behind the lyrics and picks the opposite, readable colour; needs the one-time *Screen Recording* permission), 8 presets, or *Custom…* (system colour picker, live). |
 | **Text Size ▸** | A live **slider** (14–160 pt) plus Bigger / Smaller / Reset — or just **pinch** on the lyrics (⌘ + scroll works too). |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through it. |
 | **Reset Position** | Back to the bottom-centre of the main screen. |
 | **Launch at Login** | Registers with macOS Login Items. |
 
 Drag the lyrics with the mouse to move them. Everything (position, size, colour, on/off) is remembered.
+
+### Auto-contrast colour
+
+Turn on **Lyrics Colour ▸ Auto**. macOS asks for **Screen Recording** permission the first time (System
+Settings ▸ Privacy & Security ▸ Screen Recording ▸ Overlyric; quit and reopen the app after granting).
+The overlay then samples a tiny 48×24 px capture of the screen behind the lyrics about every 1.5 s, and
+whenever you switch apps, change Space or move the overlay. It picks the complementary hue pushed to the
+opposite luminance (near-white on dark, deep tone on light, plain white/black on greys), with hysteresis
+so a mid-grey background doesn't flicker, and cross-fades between colours. Picking a preset or Custom…
+switches Auto off again.
 
 ## How it works
 
