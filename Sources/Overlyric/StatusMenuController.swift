@@ -61,6 +61,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         let sizeItem = NSMenuItem(title: "Text Size", action: nil, keyEquivalent: "")
         let sizeMenu = NSMenu(title: "Text Size")
+        sizeMenu.autoenablesItems = false
         sizeMenu.addItem(makeSliderItem())
         sizeMenu.addItem(.separator())
         let bigger = NSMenuItem(title: "Bigger", action: #selector(zoomIn), keyEquivalent: "")
@@ -68,7 +69,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let reset = NSMenuItem(title: "Reset Size", action: #selector(zoomReset), keyEquivalent: "")
         let hint = NSMenuItem(title: "Tip: pinch on the lyrics, or ⌘ + scroll", action: nil, keyEquivalent: "")
         hint.isEnabled = false
-        for it in [bigger, smaller, reset] { it.target = self; sizeMenu.addItem(it) }
+        for it in [bigger, smaller, reset] { it.target = self; it.isEnabled = true; sizeMenu.addItem(it) }
         sizeMenu.addItem(.separator())
         sizeMenu.addItem(hint)
         sizeItem.submenu = sizeMenu
@@ -115,6 +116,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         for v in [small, sizeSlider, big, sizeValueLabel] { container.addSubview(v) }
         let item = NSMenuItem()
         item.view = container
+        item.isEnabled = true
         return item
     }
 
