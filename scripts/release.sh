@@ -100,6 +100,29 @@ cat > "$README" <<EOF
 Overlyric $VERSION - Spotify lyrics floating on your screen
 Needs macOS ${MIN_OS%%.*} or later (Apple Silicon or Intel) and the Spotify desktop app.
 
+ABOUT THE SCARY-LOOKING WARNINGS (why they appear, and why it's fine)
+- "Apple could not verify Overlyric is free of malware": macOS says
+  this about every app that isn't from the App Store or from a
+  developer in Apple's paid (\$99/year) programme. It is not a scan
+  result - Apple simply hasn't reviewed it. You approve it once.
+- "Overlyric wants access to control Spotify": macOS words this
+  broadly for any app that talks to another app. Overlyric only asks
+  Spotify which song is playing and how far in it is. It never touches
+  your account, playlists or likes (only exception: if you click the
+  "encore?" offer at the end of a song, it restarts that song).
+- "Screen Recording" (only if you turn on Lyrics Colour > Auto): it
+  looks at a tiny patch right behind the lyrics to pick a colour you
+  can read. Nothing is saved or sent. The purple dot in the menu bar
+  is macOS showing you when it looks.
+- It connects to lrclib.net (a free lyrics site) to fetch the lyrics,
+  and to Spotify's image server for the album cover if you choose
+  "Match album artwork". Nothing else: no login, no account, no
+  tracking, no ads.
+- To remove it: quit it from the microphone menu, then drag Overlyric
+  from Applications to the Bin.
+
+HOW TO INSTALL
+
 1. Drag Overlyric onto the Applications folder in this window.
    Don't double-click it here: macOS won't remember your approval
    for an app opened inside this window and keeps blocking it.

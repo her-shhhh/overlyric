@@ -27,7 +27,7 @@ final class LyricsService {
         c.timeoutIntervalForRequest = 15
         c.timeoutIntervalForResource = 30
         c.waitsForConnectivity = false
-        c.httpAdditionalHeaders = ["User-Agent": "Overlyric/0.1.0 (macOS; https://github.com/her-shhhh/overlyric)"]
+        c.httpAdditionalHeaders = ["User-Agent": "Overlyric/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1") (macOS; https://github.com/her-shhhh/overlyric)"]
         session = URLSession(configuration: c)
     }
 

@@ -1,4 +1,11 @@
-# Overlyric — status (as of 2026-10-02, version 0.1.2)
+# Overlyric — status (as of 2026-10-02, version 1.1.0)
+
+## 1.1.0 (2026-10-02)
+- Friends' read-me (in the DMG) and README open with a plain-language "About the warnings" section: why
+  Gatekeeper / "control Spotify" / Screen Recording prompts appear, exactly what the app does and connects to
+  (lrclib.net; Spotify's image server for artwork mode), how to remove it. Read-me no longer suggests
+  double-clicking inside the DMG.
+- lrclib User-Agent now reports the real app version.
 
 ## Friend-install dry run (2026-10-02, on the dev Mac with app/settings/permissions wiped)
 - Gatekeeper: "Apple could not verify … free of malware" → Done → Open Anyway (expected without notarization).

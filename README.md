@@ -27,6 +27,21 @@ everything on your Mac — big, clean, Instagram-story style — and keeps them 
 
 Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app.
 
+### About the warnings (why they appear, and why it's fine)
+
+- **"Apple could not verify Overlyric is free of malware"** — macOS says this about every app that isn't
+  from the App Store or from a developer in Apple's paid ($99/year) programme. It isn't a scan result;
+  Apple simply hasn't reviewed it. You approve it once.
+- **"Overlyric wants access to control Spotify"** — macOS words this broadly for any app that talks to
+  another app. Overlyric only asks Spotify which song is playing and how far in it is. It never touches
+  your account, playlists or likes (only exception: clicking the "encore?" offer restarts that song).
+- **"Screen Recording"** (only if you turn on Lyrics Colour › Auto) — it looks at a tiny patch right
+  behind the lyrics to pick a readable colour. Nothing is saved or sent; the purple menu-bar dot is macOS
+  showing you when it looks.
+- **What it connects to:** lrclib.net for lyrics, and Spotify's image server for the album cover if you
+  choose "Match album artwork". No login, no account, no tracking, no ads.
+- **To remove it:** quit it from the microphone menu and drag it from Applications to the Bin.
+
 ## The menu
 
 | Item | What it does |
