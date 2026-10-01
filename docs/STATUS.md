@@ -26,13 +26,14 @@
 ## Verified
 - 50 unit tests (Core). Offscreen frame-by-frame QA of every style (tools/style-harness): no blockers or
   majors; pause freezes exactly in every style.
+- Live, 2026-10-02 (0.1.1, downloaded-DMG install): Auto colour end-to-end — Screen Recording granted, colour
+  flips bright↔deep with fresh random hues as dark/light windows pass behind the lyrics.
 - Live on macOS 26 (earlier builds): sync, track change, seek, pause/play, Spotify quit/relaunch, drag,
   ⌘-scroll, click → Spotify, Hindi lyrics, ~0.5 % CPU while playing.
 
 ## Not yet verified
 - Final installed build live with music playing (Spotify was paused during the last pass).
-- Live: right-click menu, Auto colour end-to-end (grant → reopen → switching dark/light windows), Artwork
-  colour, easter eggs (sparkles, on repeat, encore), Launch at Login.
+- Live: right-click menu, Artwork colour, easter eggs (sparkles, on repeat, encore), Launch at Login.
 - Fresh-Mac first run (Gatekeeper → Open Anyway, move-to-Applications offer, welcome), the Intel slice at
   runtime, macOS 14/15.
 
