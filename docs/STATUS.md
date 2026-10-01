@@ -1,4 +1,12 @@
-# Overlyric — status (as of 2026-10-02, version 1.1.3)
+# Overlyric — status (as of 2026-10-02, version 1.1.4)
+
+## 1.1.4 (2026-10-02)
+- Fresh installs start in **Dynamic** style with **Yellow** lyrics (a new vivid preset); both are first in
+  their menus (Jump and Lemon moved to second).
+- **Welcome song:** the very first launch plays Coldplay's "Yellow" once (`Onboarding.takeFirstSong`, key
+  `overlyric.firstSongPlayed`). Opens Spotify in the background if it isn't running, waits up to 10 min for
+  the Automation grant, then sends `play track` and re-sends (3 s apart, max 6) until Spotify reports it
+  playing. The guide and README say so. Not yet verified live (would play audio during testing).
 
 ## 1.1.3 (2026-10-02)
 - Story in the guide and README no longer carries the friends-only Anuv Jain inside joke (the guide gets shared
