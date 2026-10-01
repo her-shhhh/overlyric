@@ -2,6 +2,8 @@
 
 *Sing along to anything on Spotify — without knowing a single word.*
 
+**[⬇️ Download the latest version](https://github.com/her-shhhh/overlyric/releases/latest)** — grab the `.dmg`, then open the file called *"Read This or Hum Forever"*.
+
 ## How this happened
 
 I always have music on while I work, and a song is twice as good when I can sing along. Today at the
@@ -135,3 +137,7 @@ Sources/Overlyric        the app: menu, overlay panel + host view, Spotify monit
 Tests/OverlyricCoreTests
 docs/ARCHITECTURE.md     how it works, and the macOS gotchas we hit
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE). Fork it, remix it, send a pull request; just keep the copyright notice.
