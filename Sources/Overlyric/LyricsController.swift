@@ -1,28 +1,40 @@
 import AppKit
+import QuartzCore
 import OverlyricCore
 
-/// Glue: Spotify state → lyrics fetch → (current, next) line → overlay.
+/// Glue: Spotify state → lyrics fetch → playback clock → overlay style.
 /// No periodic tick: a one-shot timer is armed for exactly the next line boundary and re-armed on every
-/// state change, so nothing runs while paused, hidden or idle.
+/// state change, so nothing runs while paused, hidden or idle. Time-driven styles animate on the GPU.
 @MainActor
 final class LyricsController {
     let panel = OverlayPanel()
     let monitor = SpotifyMonitor()
     private(set) lazy var sampler = BackgroundSampler(window: panel)
+    private(set) lazy var eggs = EasterEggs(view: view)
     private let service = LyricsService()
+    private let artwork = ArtworkColorService()
+    private var artworkColor: NSColor?
+    private var artworkTrackKey: String?
     private let settings = Settings.shared
     private var view: OverlayView { panel.overlayView }
 
-    private enum LyricsState: Equatable { case none, loading, loaded, notFound, failed }
+    private enum Phase: Equatable { case none, loading, loaded, notFound, failed }
     private var lyrics: SyncedLyrics?
-    private var lyricsState: LyricsState = .none
+    private var phase: Phase = .none
     private var currentTrackKey: String?
     private var fetchGeneration = 0
     private var fetchTask: Task<Void, Never>?
     private var failedAt: Date?
+    private var retryAttempt = 0
+    private var retryTimer: Timer?
+    /// Back-off for lookups that failed on the network (seconds after each failure).
+    private static let retryDelays: [TimeInterval] = [3, 8, 20, 45, 90]
     private var lineTimer: Timer?
-    private var shownWindow: SyncedLyrics.Window?
     private var visible = false
+    private var lastLineShown: (String, Int?)?
+    private var lastPosition: (key: String, position: TimeInterval)?
+    /// First launch ever: a short hello is shown until then (or until lyrics take over).
+    private var welcomeUntil: Date?
 
     struct StatusText {
         let title: String
@@ -31,12 +43,23 @@ final class LyricsController {
 
     func start() {
         view.fontSize = settings.fontSize
+        view.style = settings.style
         view.color = settings.color
-        view.onZoomEnded = { [weak self] size in self?.settings.fontSize = size }
+        view.onResizeEnded = { [weak self] size in self?.settings.fontSize = size }
+        view.onClick = { [weak self] in
+            guard let self else { return }
+            if !self.eggs.consumeClick() { Self.openSpotify() }
+        }
+        view.onShake = { [weak self] in self?.eggs.shake() }
+        eggs.enabled = settings.easterEggs
+        eggs.onEncore = { [weak self] in
+            guard let self, let id = self.monitor.snapshot.track?.id else { return }
+            self.monitor.restart(trackID: id)
+        }
         panel.moveTop(to: settings.windowTop)
         panel.ignoresMouseEvents = settings.clickThrough
         sampler.onChoice = { [weak self] choice in
-            guard let self, self.settings.autoContrast else { return }
+            guard let self, self.settings.colorMode == .autoContrast else { return }
             self.view.setColor(NSColor(srgbRed: choice.color.r, green: choice.color.g, blue: choice.color.b, alpha: 1), animated: true)
         }
 
@@ -50,11 +73,19 @@ final class LyricsController {
         monitor.onChange = { [weak self] in self?.playbackChanged() }
         monitor.setActive(settings.enabled)
         monitor.start()
-        refresh(force: true)
+        if Onboarding.takeWelcome() {
+            welcomeUntil = Date().addingTimeInterval(9)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9.1) { [weak self] in
+                self?.welcomeUntil = nil
+                self?.refresh()
+            }
+        }
+        refresh()
     }
 
     func stop() {
         lineTimer?.invalidate()
+        retryTimer?.invalidate()
         fetchTask?.cancel()
         monitor.stop()
     }
@@ -63,25 +94,53 @@ final class LyricsController {
 
     private func applySettings() {
         if view.fontSize != settings.fontSize { view.fontSize = settings.fontSize }
+        if view.style != settings.style { view.style = settings.style }
+        eggs.enabled = settings.easterEggs
         panel.ignoresMouseEvents = settings.clickThrough
         monitor.setActive(settings.enabled)
-        refresh(force: true)
+        refresh()
         updateColorSource()
     }
 
-    /// Manual colour, or the sampler's pick while auto-contrast is on and the overlay is visible.
+    /// Manual colour, the sampler's pick (auto-contrast), or the artwork theme colour.
     private func updateColorSource() {
-        let auto = settings.autoContrast && visible
-        sampler.setEnabled(auto)
-        if settings.autoContrast {
-            if !BackgroundSampler.hasPermission { sampler.requestPermission() }
+        let mode = settings.colorMode
+        sampler.setEnabled(mode == .autoContrast && visible)
+        sampler.setPeriodic(monitor.snapshot.isPlaying)
+        switch mode {
+        case .autoContrast:
             if let c = sampler.choice {
                 view.setColor(NSColor(srgbRed: c.color.r, green: c.color.g, blue: c.color.b, alpha: 1), animated: false)
             } else {
                 view.setColor(settings.color, animated: false)   // until the first sample lands
             }
-        } else {
+        case .artwork:
+            if let artworkColor, artworkTrackKey == currentTrackKey {
+                view.setColor(artworkColor, animated: false)
+            } else {
+                view.setColor(settings.color, animated: false)
+                refreshArtworkColor()
+            }
+        case .manual:
             view.setColor(settings.color, animated: false)
+        }
+    }
+
+    private func refreshArtworkColor() {
+        guard settings.colorMode == .artwork, let track = monitor.snapshot.track, track.isSong,
+              let key = currentTrackKey, artworkTrackKey != key else { return }
+        artworkTrackKey = key
+        artworkColor = nil
+        monitor.fetchArtworkURL(for: track) { [weak self] url in
+            guard let self, let url, self.artworkTrackKey == key else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let rgb = await self.artwork.textColor(trackKey: key, artworkURL: url)
+                guard self.artworkTrackKey == key, self.settings.colorMode == .artwork else { return }
+                let color = rgb.map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 1) } ?? self.settings.color
+                self.artworkColor = color
+                self.view.setColor(color, animated: true)
+            }
         }
     }
 
@@ -89,25 +148,33 @@ final class LyricsController {
 
     private func playbackChanged() {
         let snap = monitor.snapshot
+        sampler.setPeriodic(snap.isPlaying)
         let key = snap.track.map(LyricsService.cacheKey(for:))
+        let position = snap.position(at: Date())
         if key != currentTrackKey {
             currentTrackKey = key
             lyrics = nil
-            shownWindow = nil
+            lastLineShown = nil
             fetchGeneration += 1
             fetchTask?.cancel()
-            if let t = snap.track, t.isSong {
-                lyricsState = .loading
+            retryTimer?.invalidate()
+            retryAttempt = 0
+            if let t = snap.track, t.isSong, let key {
+                phase = .loading
                 fetch(t)
+                if settings.colorMode == .artwork { refreshArtworkColor() }
+                if settings.colorMode == .autoContrast { sampler.reshuffle() }   // a fresh colour per song
+                if position < 5 { eggs.trackStarted(id: key) }
             } else {
-                lyricsState = .none
+                phase = .none
             }
-        } else if lyricsState == .failed, let t = snap.track, t.isSong,
-                  Date().timeIntervalSince(failedAt ?? .distantPast) > 15 {
-            lyricsState = .loading        // network came back? retry on the next state change
-            fetch(t)
+        } else if let key, let last = lastPosition, last.key == key,
+                  let duration = snap.track?.duration, duration > 30,
+                  last.position > duration - 15, position < 5 {
+            eggs.trackStarted(id: key)                   // the same song started again (repeat one)
         }
-        refresh(force: false)
+        if let key { lastPosition = (key, position) }
+        refresh()
     }
 
     private func fetch(_ track: SpotifyTrack) {
@@ -121,62 +188,91 @@ final class LyricsController {
             switch result {
             case .success(let found):
                 self.lyrics = found
-                self.lyricsState = found == nil ? .notFound : .loaded
+                self.phase = found == nil ? .notFound : .loaded
                 Log.lyrics.notice("result: \(found.map { "\($0.lines.count) lines" } ?? "not found", privacy: .public) in \(Int(Date().timeIntervalSince(started) * 1000), privacy: .public)ms")
             case .failure(.cancelled):
                 return
             case .failure(let error):
                 self.lyrics = nil
-                self.lyricsState = .failed
-                self.failedAt = Date()
                 Log.lyrics.error("lookup failed: \(String(describing: error), privacy: .public)")
+                if self.retryAttempt < Self.retryDelays.count {
+                    // Keep showing ♪ and try again shortly — lrclib is occasionally slow or busy.
+                    let delay = Self.retryDelays[self.retryAttempt]
+                    self.retryAttempt += 1
+                    self.phase = .loading
+                    self.retryTimer?.invalidate()
+                    self.retryTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            guard let self, generation == self.fetchGeneration, let t = self.monitor.snapshot.track else { return }
+                            self.fetch(t)
+                        }
+                    }
+                } else {
+                    self.phase = .failed
+                    self.failedAt = Date()
+                }
             }
-            self.shownWindow = nil
-            self.refresh(force: true)
+            self.refresh()
         }
     }
 
-    // MARK: Line timing
+    // MARK: Timing
 
-    /// Arms a one-shot timer for the next line boundary (nothing while paused / no lyrics / hidden).
-    private func armLineTimer() {
+    /// Arms one timer for the next moment something changes: the next line, or the encore window.
+    private func armTimer() {
         lineTimer?.invalidate()
         lineTimer = nil
         let snap = monitor.snapshot
-        guard visible, snap.isPlaying, lyricsState == .loaded, let lyrics, !lyrics.isEmpty else { return }
+        guard visible, snap.isPlaying, phase == .loaded, let lyrics, !lyrics.isEmpty else { return }
         let now = Date()
         let position = snap.position(at: now)
-        guard let nextIndex = lyrics.window(at: position).next else { return }   // past the last line
-        let delay = max(0.005, lyrics.lines[nextIndex].time - position)
-        let timer = Timer(fire: now.addingTimeInterval(delay), interval: 0, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh(force: false) }
+        var wake: TimeInterval?
+        if let next = lyrics.window(at: position).next { wake = lyrics.lines[next].time - position }
+        if let duration = snap.track?.duration, duration > 20 {
+            let encore = duration - 7.5 - position
+            if encore > 0 { wake = min(wake ?? encore, encore) }
+        }
+        guard let wake else { return }
+        let timer = Timer(fire: now.addingTimeInterval(max(0.005, wake)), interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
         }
         timer.tolerance = 0.005
         RunLoop.main.add(timer, forMode: .common)
         lineTimer = timer
     }
 
-    private func refresh(force: Bool) {
-        defer { armLineTimer() }
+    private func refresh() {
+        defer { armTimer() }
         let snap = monitor.snapshot
-        let shouldShow = settings.enabled && (snap.track?.isSong ?? false) && lyricsState != .none
-        guard shouldShow else { hide(); return }
+        let shouldShow = settings.enabled && (snap.track?.isSong ?? false) && phase != .none
+        if !(shouldShow && phase == .loaded), let until = welcomeUntil, Date() < until {
+            show()
+            view.update(.note(Onboarding.welcomeText))
+            return
+        }
+        guard shouldShow, let key = currentTrackKey else { hide(); return }
 
-        switch lyricsState {
+        switch phase {
         case .loading:
-            view.update(.lines(current: nil, next: nil), animated: false)
+            view.update(.empty)
         case .notFound:
-            view.update(.note("No synced lyrics for this song"), animated: false)
+            view.update(.note("No synced lyrics for this song"))
         case .failed:
-            view.update(.note("Lyrics unavailable — can't reach lrclib.net"), animated: false)
+            view.update(.note("Lyrics aren't loading right now (no connection to lrclib.net)"))
         case .loaded:
             guard let lyrics else { return }
-            let window = lyrics.window(at: snap.position(at: Date()))
-            if force || window != shownWindow {
-                shownWindow = window
-                view.update(.lines(current: lyrics.text(at: window.current), next: lyrics.text(at: window.next)),
-                            animated: visible)
+            let now = Date()
+            let position = snap.position(at: now)
+            let clock = PlaybackClock(position: position, hostTime: CACurrentMediaTime(), playing: snap.isPlaying)
+            let state = LyricsState(id: key, lyrics: lyrics, index: lyrics.currentIndex(at: position), clock: clock)
+            show()
+            view.update(.lyrics(state))
+            if lastLineShown?.0 != key || lastLineShown?.1 != state.index {
+                lastLineShown = (key, state.index)
+                eggs.lineShown(state)
             }
+            if let duration = snap.track?.duration { eggs.considerEncore(state, trackDuration: duration) }
+            return
         case .none:
             break
         }
@@ -187,15 +283,27 @@ final class LyricsController {
         guard !visible else { return }
         visible = true
         panel.orderFrontRegardless()
-        if settings.autoContrast { updateColorSource() }
+        if settings.colorMode != .manual { updateColorSource() }
     }
 
     private func hide() {
         guard visible else { return }
         visible = false
         panel.orderOut(nil)
-        view.update(.empty, animated: false)
+        view.update(.empty)
         sampler.setEnabled(false)
+    }
+
+    // MARK: Spotify
+
+    /// Brings Spotify to the front (launching it if needed), like `open -a Spotify`.
+    static func openSpotify() {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyMonitor.bundleID) else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+            if let error { Log.ui.error("open Spotify failed: \(error.localizedDescription, privacy: .public)") }
+        }
     }
 
     // MARK: Menu status
@@ -219,7 +327,7 @@ final class LyricsController {
         if !track.isSong {
             detail = track.isAd ? "Advertisement" : "Podcast episode — no lyrics"
         } else {
-            switch lyricsState {
+            switch phase {
             case .loading: detail = "Finding lyrics…"
             case .loaded: detail = "Synced lyrics ✓"
             case .notFound: detail = "No synced lyrics found"

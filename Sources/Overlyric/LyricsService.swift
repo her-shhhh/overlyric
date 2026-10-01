@@ -16,14 +16,16 @@ final class LyricsService {
 
     private let session: URLSession
     private var cache: [String: SyncedLyrics?] = [:]
+    private let disk = LyricsDiskCache.standard(bundleID: Bundle.main.bundleIdentifier ?? "com.harsh.overlyric")
     private var nextSlot = Date.distantPast
     private static let base = "https://lrclib.net/api"
     private static let spacing: TimeInterval = 0.25
 
     init() {
         let c = URLSessionConfiguration.ephemeral
-        c.timeoutIntervalForRequest = 8
-        c.timeoutIntervalForResource = 20
+        // lrclib answers in ~0.5 s from its cache but a cold lookup can take 5–10 s.
+        c.timeoutIntervalForRequest = 15
+        c.timeoutIntervalForResource = 30
         c.waitsForConnectivity = false
         c.httpAdditionalHeaders = ["User-Agent": "Overlyric/0.1.0 (macOS; https://github.com/her-shhhh/overlyric)"]
         session = URLSession(configuration: c)
@@ -36,10 +38,24 @@ final class LyricsService {
     func lyrics(for track: SpotifyTrack) async -> Result<SyncedLyrics?, LookupError> {
         let key = Self.cacheKey(for: track)
         if let cached = cache[key] { return .success(cached) }
+        switch disk.load(key) {
+        case .found(let lrc)?:
+            if let parsed = LRCParser.parse(lrc) {
+                cache[key] = .some(parsed)
+                Log.lyrics.notice("disk cache hit for \(track.name, privacy: .public)")
+                return .success(parsed)
+            }
+        case .notFound?:
+            cache[key] = .some(nil)
+            return .success(nil)
+        case nil:
+            break
+        }
         do {
-            let result = try await resolve(track)
-            cache[key] = .some(result)
-            return .success(result)
+            let (parsed, raw) = try await resolve(track)
+            cache[key] = .some(parsed)
+            disk.store(raw.map { .found($0) } ?? .notFound, for: key)
+            return .success(parsed)
         } catch let error as LookupError {
             return .failure(error)
         } catch is CancellationError {
@@ -51,7 +67,8 @@ final class LyricsService {
 
     // MARK: Lookup chain (see docs/ARCHITECTURE.md § LyricsService)
 
-    private func resolve(_ t: SpotifyTrack) async throws -> SyncedLyrics? {
+    /// The parsed lyrics and the raw LRC text they came from (for the disk cache).
+    private func resolve(_ t: SpotifyTrack) async throws -> (SyncedLyrics?, String?) {
         let duration: TimeInterval? = t.duration > 0 ? t.duration : nil
         let primary = TrackNameCleaner.primaryArtist(t.artist)
         let titles = TrackNameCleaner.titleVariants(t.name)
@@ -72,8 +89,8 @@ final class LyricsService {
             let key = "\(a.track)|\(a.artist)|\(a.album ?? "")".lowercased()
             guard seen.insert(key).inserted else { continue }
             if let rec = try await get(track: a.track, artist: a.artist, album: a.album, duration: duration),
-               rec.hasSyncedLyrics, let parsed = LRCParser.parse(rec.syncedLyrics!) {
-                return parsed
+               rec.hasSyncedLyrics, let raw = rec.syncedLyrics, let parsed = LRCParser.parse(raw) {
+                return (parsed, raw)
             }
         }
 
@@ -82,10 +99,10 @@ final class LyricsService {
         if candidates.isEmpty { candidates = try await search(track: cleaned, artist: nil) }
         if candidates.isEmpty { candidates = try await search(q: "\(cleaned) \(primary)") }
         if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned),
-           let parsed = LRCParser.parse(best.syncedLyrics ?? "") {
-            return parsed
+           let raw = best.syncedLyrics, let parsed = LRCParser.parse(raw) {
+            return (parsed, raw)
         }
-        return nil
+        return (nil, nil)
     }
 
     // MARK: HTTP

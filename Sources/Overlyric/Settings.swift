@@ -52,7 +52,10 @@ final class Settings {
         static let centerX = "overlyric.centerX"
         static let centerY = "overlyric.centerY"
         static let hasCenter = "overlyric.hasCenter"
-        static let autoContrast = "overlyric.autoContrast"
+        static let autoContrast = "overlyric.autoContrast"   // pre-colorMode builds
+        static let colorMode = "overlyric.colorMode"
+        static let style = "overlyric.style"
+        static let easterEggs = "overlyric.easterEggs"
     }
 
     var enabled: Bool {
@@ -89,10 +92,28 @@ final class Settings {
         }
     }
 
-    /// Pick the lyric colour automatically from what is behind the overlay (needs Screen Recording).
-    var autoContrast: Bool {
-        get { d.bool(forKey: Key.autoContrast) }
-        set { d.set(newValue, forKey: Key.autoContrast); notify() }
+    enum ColorMode: String { case manual, autoContrast, artwork }
+
+    /// Where the lyric colour comes from: a chosen colour, the screen behind the overlay, or the cover art.
+    var colorMode: ColorMode {
+        get {
+            if let raw = d.string(forKey: Key.colorMode), let m = ColorMode(rawValue: raw) { return m }
+            return d.bool(forKey: Key.autoContrast) ? .autoContrast : .manual
+        }
+        set { d.set(newValue.rawValue, forKey: Key.colorMode); notify() }
+    }
+    var autoContrast: Bool { colorMode == .autoContrast }
+
+    /// How the lyrics are presented.
+    var style: LyricsStyle {
+        get { LyricsStyle(rawValue: d.string(forKey: Key.style) ?? "") ?? .classic }
+        set { d.set(newValue.rawValue, forKey: Key.style); notify() }
+    }
+
+    /// Small hidden delights (sparkle words, shake, on-repeat, encore). Toggle lives in the ⌥-menu.
+    var easterEggs: Bool {
+        get { d.object(forKey: Key.easterEggs) as? Bool ?? true }
+        set { d.set(newValue, forKey: Key.easterEggs); notify() }
     }
 
     var clickThrough: Bool {
@@ -106,8 +127,13 @@ final class Settings {
             if d.bool(forKey: Key.hasTop) {
                 return NSPoint(x: d.double(forKey: Key.topX), y: d.double(forKey: Key.topY))
             }
-            if d.bool(forKey: Key.hasCenter) {   // migrate an old centre: assume a two-line block
-                return NSPoint(x: d.double(forKey: Key.centerX), y: d.double(forKey: Key.centerY) + 60)
+            if d.bool(forKey: Key.hasCenter) {   // one-time migration from a centre (two-line block ≈ 4 × size tall)
+                let top = NSPoint(x: d.double(forKey: Key.centerX), y: d.double(forKey: Key.centerY) + 2 * fontSize)
+                d.set(Double(top.x), forKey: Key.topX)
+                d.set(Double(top.y), forKey: Key.topY)
+                d.set(true, forKey: Key.hasTop)
+                d.set(false, forKey: Key.hasCenter)
+                return top
             }
             return nil
         }

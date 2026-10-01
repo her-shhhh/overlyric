@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: StatusMenuController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Got it as a download and opened it straight from there? Offer to move it to Applications first.
+        if Onboarding.offerMoveToApplicationsIfNeeded() { return }
         let controller = LyricsController()
         self.controller = controller
         statusMenu = StatusMenuController(controller: controller)

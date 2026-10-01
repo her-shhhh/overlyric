@@ -40,14 +40,44 @@ final class SpotifyScripter: NSObject, SBApplicationDelegate {
         }
     }
 
-    private func readSync(full: Bool, pid: pid_t) -> Result<Reading, Failure> {
+    /// Reads the current track's id and artwork URL (two round trips).
+    func readArtwork(pid: pid_t, completion: @escaping ((id: String, url: URL)?) -> Void) {
+        queue.async {
+            var result: (id: String, url: URL)?
+            if let app = self.bridge(pid: pid), let t = app.value(forKey: "currentTrack") as? SBObject,
+               let id = t.value(forKey: "id") as? String,
+               let raw = t.value(forKey: "artworkUrl") as? String, let url = URL(string: raw) {
+                result = (id, url)
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Starts the given track again: rewinds it if it's still playing, otherwise goes back to it.
+    func restart(trackID: String, pid: pid_t) {
+        queue.async {
+            guard let app = self.bridge(pid: pid) else { return }
+            let current = (app.value(forKey: "currentTrack") as? SBObject)?.value(forKey: "id") as? String
+            if current == trackID {
+                app.setValue(0, forKey: "playerPosition")
+            } else {
+                app.perform(NSSelectorFromString("previousTrack"))
+            }
+        }
+    }
+
+    private func bridge(pid: pid_t) -> SBApplication? {
         if app == nil || appPID != pid {
             app = SBApplication(processIdentifier: pid)
             appPID = pid
             app?.delegate = self
             app?.timeout = 60 * 10   // ticks (1/60 s): 10 s
         }
-        guard let app else { return .failure(.notRunning) }
+        return app
+    }
+
+    private func readSync(full: Bool, pid: pid_t) -> Result<Reading, Failure> {
+        guard let app = bridge(pid: pid) else { return .failure(.notRunning) }
         lastError = nil
 
         guard let stateNumber = app.value(forKey: "playerState") as? NSNumber else {

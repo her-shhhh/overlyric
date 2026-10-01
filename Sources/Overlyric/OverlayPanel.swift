@@ -7,6 +7,9 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
     /// The top-centre the user chose. Content re-sizing is anchored here, so the current line's top stays
     /// put while lines wrap/unwrap below it, and a window clamped at a screen edge never "ratchets" away.
     private var anchorTop: NSPoint?
+    /// How far the transparent padding may hang off the screen edge: the TEXT, not the invisible
+    /// window, is what has to stay on screen. Set by OverlayView from its current padding.
+    var overhang: CGFloat = 0
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 420, height: 120),
@@ -20,7 +23,7 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
         isFloatingPanel = true          // NOTE: this resets `level` to .floating, so set the level AFTER it.
         becomesKeyOnlyIfNeeded = true
         level = .statusBar
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = false     // OverlayView drags by hand so a click can be told apart
         isReleasedWhenClosed = false
         isExcludedFromWindowsMenu = true
         animationBehavior = .none
@@ -37,11 +40,42 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
     func setContentSizeKeepingTop(_ size: NSSize) {
         let t = anchorTop ?? topPoint
         var nf = NSRect(x: t.x - size.width / 2, y: t.y - size.height, width: size.width, height: size.height)
-        nf = Self.clamp(nf, to: screenFor(point: t))
+        nf = clamp(nf, to: screenFor(point: t))
         guard nf != frame else { return }
         suppressMoveSave = true
         setFrame(nf, display: false, animate: false)   // the layer transaction that follows draws it
         suppressMoveSave = false
+    }
+
+    /// Like `setContentSizeKeepingTop` but anchored on the window's current top, so a frame that was
+    /// clamped at a screen edge doesn't hop when it shrinks after a transition.
+    func setContentSizeKeepingCurrentTop(_ size: NSSize) {
+        let t = topPoint
+        var nf = NSRect(x: t.x - size.width / 2, y: t.y - size.height, width: size.width, height: size.height)
+        nf = clamp(nf, to: screenFor(point: t))
+        guard nf != frame else { return }
+        suppressMoveSave = true
+        setFrame(nf, display: false, animate: false)
+        suppressMoveSave = false
+    }
+
+    /// Live drag from OverlayView (no persistence until the drag ends).
+    func dragMove(to origin: NSPoint) {
+        suppressMoveSave = true
+        setFrameOrigin(origin)
+        suppressMoveSave = false
+    }
+
+    /// End of a user drag: keep the overlay reachable on screen and remember where it was put.
+    func dragEnded() {
+        let f = clamp(frame, to: screenFor(point: NSPoint(x: frame.midX, y: frame.midY)))
+        if f != frame {
+            suppressMoveSave = true
+            setFrame(f, display: true, animate: false)
+            suppressMoveSave = false
+        }
+        anchorTop = topPoint
+        Settings.shared.windowTop = topPoint
     }
 
     /// Moves the window so its top-centre is at `top` (or the default subtitle position).
@@ -50,7 +84,7 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
         anchorTop = target
         var nf = frame
         nf.origin = NSPoint(x: target.x - nf.width / 2, y: target.y - nf.height)
-        nf = Self.clamp(nf, to: screenFor(point: target))
+        nf = clamp(nf, to: screenFor(point: target))
         suppressMoveSave = true
         setFrame(nf, display: true, animate: false)
         suppressMoveSave = false
@@ -67,18 +101,21 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
         NSScreen.screens.first { $0.frame.contains(point) } ?? screen ?? NSScreen.main
     }
 
-    private static func clamp(_ rect: NSRect, to screen: NSScreen?) -> NSRect {
-        guard let vf = screen?.visibleFrame else { return rect }
+    /// Keeps the lyrics on screen: the whole screen (menu bar and Dock areas included) is the limit for
+    /// the text; the window's transparent padding may hang off the edges.
+    private func clamp(_ rect: NSRect, to screen: NSScreen?) -> NSRect {
+        guard let sf = screen?.frame else { return rect }
+        let limit = sf.insetBy(dx: -overhang, dy: -overhang)
         var r = rect
-        if r.width <= vf.width {
-            r.origin.x = min(max(r.origin.x, vf.minX), vf.maxX - r.width)
+        if r.width <= limit.width {
+            r.origin.x = min(max(r.origin.x, limit.minX), limit.maxX - r.width)
         } else {
-            r.origin.x = vf.midX - r.width / 2
+            r.origin.x = limit.midX - r.width / 2
         }
-        if r.height <= vf.height {
-            r.origin.y = min(max(r.origin.y, vf.minY), vf.maxY - r.height)
+        if r.height <= limit.height {
+            r.origin.y = min(max(r.origin.y, limit.minY), limit.maxY - r.height)
         } else {
-            r.origin.y = vf.midY - r.height / 2
+            r.origin.y = limit.midY - r.height / 2
         }
         return r
     }
@@ -86,10 +123,7 @@ final class OverlayPanel: NSPanel, NSWindowDelegate {
     // MARK: NSWindowDelegate
 
     func windowDidMove(_ notification: Notification) {
-        guard !suppressMoveSave else { return }
-        // Only persist drags by the user, not the system relocating us when a display disconnects.
-        guard NSEvent.pressedMouseButtons & 1 != 0 else { return }
-        anchorTop = topPoint
-        Settings.shared.windowTop = topPoint
+        // User drags are persisted in dragEnded(); moves made by the system (display disconnected)
+        // are deliberately not saved, so the overlay returns when the display comes back.
     }
 }

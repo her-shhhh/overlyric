@@ -6,6 +6,9 @@ public struct RGB: Equatable, Sendable {
     public var g: Double
     public var b: Double
     public init(r: Double, g: Double, b: Double) { self.r = r; self.g = g; self.b = b }
+    public init(hex: UInt32) {
+        self.init(r: Double((hex >> 16) & 0xFF) / 255, g: Double((hex >> 8) & 0xFF) / 255, b: Double(hex & 0xFF) / 255)
+    }
 
     public static let white = RGB(r: 1, g: 1, b: 1)
     public static let black = RGB(r: 0, g: 0, b: 0)
@@ -16,10 +19,13 @@ public struct RGB: Equatable, Sendable {
     }
 }
 
-/// Picks a lyric colour that reads clearly on a given background: the complementary hue, pushed to the
-/// opposite luminance (near-white tint on dark backgrounds, deep tone on light ones), neutral when the
-/// background is grey. Polarity has hysteresis so a background hovering around mid-grey does not flicker.
+/// Picks a lyric colour that reads clearly on a given background. Colourful by design: a random pick
+/// from a curated palette of vivid colours (bright ones for dark backgrounds, deep ones for light
+/// backgrounds), restricted to those that clear a contrast threshold against the background and do not
+/// clash with its hue. The current colour is kept while it stays readable, so nothing flickers.
 public enum ContrastChooser {
+    // MARK: Colour science
+
     /// WCAG relative luminance (0 = black, 1 = white) of an sRGB colour.
     public static func luminance(_ c: RGB) -> Double {
         0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b)
@@ -31,68 +37,122 @@ public enum ContrastChooser {
 
     /// WCAG contrast ratio between two colours (1…21).
     public static func contrastRatio(_ a: RGB, _ b: RGB) -> Double {
-        let la = luminance(a), lb = luminance(b)
-        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+        contrastRatio(luminance(a), luminance(b))
     }
 
-    /// Below this background luminance the text goes light; above `darkTextAbove` it goes dark.
-    /// In between the previous polarity is kept (hysteresis). Black and white have equal WCAG contrast
-    /// at L ≈ 0.18, so the band is centred there.
-    public static let lightTextBelow = 0.14
-    public static let darkTextAbove = 0.23
+    public static func contrastRatio(_ la: Double, _ lb: Double) -> Double {
+        (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    // MARK: Generated colours
+
+    public static let neutralLight = RGB.white
+    public static let neutralDark = RGB(hex: 0x111318)
+
+    /// Generates a vivid colour of the given polarity from the whole spectrum: random hue, random vivid
+    /// saturation, brightness solved so the colour's luminance lands in the readable band
+    /// (bright: L ≥ 0.45; deep: L ≤ 0.07). Returns nil if this hue can't be both vivid and readable.
+    public static func generate<R: RandomNumberGenerator>(bright: Bool, hue: Double, using rng: inout R) -> RGB? {
+        if bright {
+            // Start vivid, then desaturate only as much as the hue needs (blues/reds are perceptually dark).
+            let targetL = Double.random(in: 0.45...0.75, using: &rng)
+            var sat = Double.random(in: 0.5...0.85, using: &rng)
+            var c = rgb(h: hue, s: sat, b: 1)
+            while luminance(c) < targetL, sat > 0.28 {
+                sat -= 0.03
+                c = rgb(h: hue, s: sat, b: 1)
+            }
+            return luminance(c) >= 0.45 ? c : nil
+        } else {
+            // Rich, saturated, dark: pick saturation, then binary-search brightness for the target luminance.
+            let targetL = Double.random(in: 0.025...0.065, using: &rng)
+            let sat = Double.random(in: 0.6...0.95, using: &rng)
+            var lo = 0.0, hi = 1.0
+            for _ in 0..<24 {
+                let mid = (lo + hi) / 2
+                if luminance(rgb(h: hue, s: sat, b: mid)) > targetL { hi = mid } else { lo = mid }
+            }
+            guard lo >= 0.22 else { return nil }          // would read as black, not as a colour
+            return rgb(h: hue, s: sat, b: lo)
+        }
+    }
+
+    // MARK: Choice
+
+    /// Below this background luminance the text goes light; above `darkTextAbove` it goes dark; in
+    /// between the previous polarity is kept (hysteresis). Black and white contrast equally at L≈0.18.
+    public static let lightTextBelow = 0.16
+    public static let darkTextAbove = 0.20
+    /// Preferred and minimum contrast ratios (WCAG AAA / AA for body text).
+    public static let preferredContrast = 7.0
+    public static let minimumContrast = 4.5
 
     public struct Choice: Equatable, Sendable {
         public let color: RGB
         public let lightText: Bool
+        public init(color: RGB, lightText: Bool) { self.color = color; self.lightText = lightText }
     }
 
     /// - Parameters:
-    ///   - background: mean colour of what is behind the lyrics.
-    ///   - luminance: mean per-pixel relative luminance of the same region (more faithful than the
-    ///     luminance of the mean colour on busy backgrounds). Pass nil to derive it from `background`.
-    ///   - previousLightText: the polarity currently shown, for hysteresis.
-    public static func choose(background: RGB, luminance L: Double? = nil, previousLightText: Bool?) -> Choice {
-        let lum = L ?? luminance(background)
+    ///   - background: mean colour of what is behind the lyrics (used for hue-clash avoidance).
+    ///   - luminance: the luminance the text mostly sits on (median per-pixel). Defaults to the mean colour's.
+    ///   - previous: what is shown now. It is kept while it remains readable on the new background.
+    ///   - forceNew: pick a different colour even if the previous one is still fine (e.g. new song).
+    public static func choose<R: RandomNumberGenerator>(
+        background: RGB, luminance L: Double? = nil, previous: Choice?, forceNew: Bool = false, using rng: inout R
+    ) -> Choice {
+        let bgL = L ?? luminance(background)
         let lightText: Bool
-        if lum < lightTextBelow {
+        if bgL < lightTextBelow {
             lightText = true
-        } else if lum > darkTextAbove {
+        } else if bgL > darkTextAbove {
             lightText = false
         } else {
-            lightText = previousLightText ?? (lum < 0.18)
+            lightText = previous?.lightText ?? (bgL < 0.18)
         }
 
-        let (h, s, _) = hsb(background)
-        let neutral = s < 0.18          // grey-ish background → plain white / near-black
-        let hue = (h + 0.5).truncatingRemainder(dividingBy: 1)
-        var color: RGB
-        if lightText {
-            // A pale tint of the complementary hue, kept at ≥ 85 % of white's luminance so contrast
-            // stays close to pure white (blue-ish tints are perceptually dark, so saturation is reduced
-            // until the tint is bright enough).
-            color = .white
-            if !neutral {
-                var sat = min(0.32, s * 0.5)
-                color = rgb(h: hue, s: sat, b: 1)
-                while luminance(color) < 0.85, sat > 0.02 {
-                    sat -= 0.04
-                    color = rgb(h: hue, s: sat, b: 1)
-                }
-            }
-        } else {
-            // A deep tone of the complementary hue: coloured enough to feel "opposite", dark enough
-            // (luminance ≤ 0.8 %) to keep contrast close to pure black.
-            color = RGB(r: 0.08, g: 0.08, b: 0.09)
-            if !neutral {
-                var bright = 0.2
-                color = rgb(h: hue, s: min(0.7, s * 0.8), b: bright)
-                while luminance(color) > 0.008, bright > 0.06 {
-                    bright -= 0.02
-                    color = rgb(h: hue, s: min(0.7, s * 0.8), b: bright)
-                }
+        let (bgH, bgS, _) = hsb(background)
+        func clashes(_ c: RGB) -> Bool {
+            guard bgS > 0.35 else { return false }
+            let d = abs(hsb(c).h - bgH)
+            return min(d, 1 - d) < 0.08
+        }
+        func readable(_ c: RGB, _ threshold: Double) -> Bool {
+            contrastRatio(luminance(c), bgL) >= threshold && !clashes(c)
+        }
+
+        // Keep the current colour while it is still the right polarity and readable.
+        if !forceNew, let previous, previous.lightText == lightText, readable(previous.color, minimumContrast) {
+            return previous
+        }
+
+        // Generate fresh colours from the whole spectrum until one is readable (AAA first, then AA).
+        // A new pick is also a clearly different hue from the one it replaces.
+        let previousHue = previous.map { hsb($0.color) }
+        func farFromPrevious(_ c: RGB) -> Bool {
+            guard let p = previousHue, p.s > 0.2 else { return true }
+            let d = abs(hsb(c).h - p.h)
+            return min(d, 1 - d) >= 0.12
+        }
+        for threshold in [preferredContrast, minimumContrast] {
+            for _ in 0..<64 {
+                let hue = Double.random(in: 0..<1, using: &rng)
+                guard let c = generate(bright: lightText, hue: hue, using: &rng),
+                      readable(c, threshold), farFromPrevious(c) else { continue }
+                return Choice(color: c, lightText: lightText)
             }
         }
-        return Choice(color: color, lightText: lightText)
+        // Nothing colourful is readable enough (mid-tone backgrounds): use a neutral of the SAME polarity,
+        // so a background hovering around mid-grey cannot make the text flip between white and black.
+        if lightText { return Choice(color: neutralLight, lightText: true) }
+        let dark = contrastRatio(luminance(neutralDark), bgL) >= minimumContrast ? neutralDark : RGB.black
+        return Choice(color: dark, lightText: false)
+    }
+
+    /// Convenience using the system random generator.
+    public static func choose(background: RGB, luminance L: Double? = nil, previous: Choice?, forceNew: Bool = false) -> Choice {
+        var g = SystemRandomNumberGenerator()
+        return choose(background: background, luminance: L, previous: previous, forceNew: forceNew, using: &g)
     }
 
     // MARK: HSB

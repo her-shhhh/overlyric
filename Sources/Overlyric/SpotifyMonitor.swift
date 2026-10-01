@@ -62,6 +62,24 @@ final class SpotifyMonitor {
         if active { pollNow(full: true) }
     }
 
+    /// Asks Spotify for the current track's artwork URL (nil if unavailable or a different track is now playing).
+    func fetchArtworkURL(for track: SpotifyTrack, completion: @escaping (URL?) -> Void) {
+        guard let spotify = runningSpotify, automation != .denied else { completion(nil); return }
+        scripter.readArtwork(pid: spotify.processIdentifier) { result in
+            guard let result, result.id == track.id || track.id.isEmpty else { completion(nil); return }
+            completion(result.url)
+        }
+    }
+
+    /// Encore: play the given track again from the top.
+    func restart(trackID: String) {
+        guard let spotify = runningSpotify, automation == .granted else { return }
+        scripter.restart(trackID: trackID, pid: spotify.processIdentifier)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            MainActor.assumeIsolated { self?.pollNow(full: true) }
+        }
+    }
+
     // MARK: Push
 
     @objc private func playbackChanged(_ note: Notification) {

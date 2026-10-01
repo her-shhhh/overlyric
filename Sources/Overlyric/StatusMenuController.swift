@@ -14,12 +14,15 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let colorMenu = NSMenu(title: "Lyrics Colour")
     private let autoItem = NSMenuItem(title: "Auto — contrast with what's behind", action: #selector(toggleAuto), keyEquivalent: "")
+    private let artworkItem = NSMenuItem(title: "Match album artwork", action: #selector(toggleArtwork), keyEquivalent: "")
     private let autoStatusItem = NSMenuItem(title: "", action: #selector(autoStatusClicked), keyEquivalent: "")
     private let lockItem = NSMenuItem(title: "Lock Position (click-through)", action: #selector(toggleLock), keyEquivalent: "")
     private let sizeSlider = NSSlider(value: Double(Settings.defaultFontSize), minValue: Double(Settings.minFontSize),
                                       maxValue: Double(Settings.maxFontSize), target: nil, action: nil)
     private let sizeValueLabel = NSTextField(labelWithString: "")
     private let launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+    private let styleMenu = NSMenu(title: "Lyrics Style")
+    private let eggsItem = NSMenuItem(title: "Easter Eggs", action: #selector(toggleEggs), keyEquivalent: "")
 
     init(controller: LyricsController) {
         self.controller = controller
@@ -46,6 +49,25 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(statusDetailItem)
         menu.addItem(.separator())
 
+        let styleItem = NSMenuItem(title: "Lyrics Style", action: nil, keyEquivalent: "")
+        styleMenu.autoenablesItems = false
+        for (i, style) in LyricsStyle.allCases.enumerated() {
+            let it = NSMenuItem(title: style.title, action: #selector(pickStyle(_:)), keyEquivalent: "")
+            it.target = self
+            it.tag = i
+            it.toolTip = style.subtitle
+            // Title + a quiet description underneath.
+            let title = NSMutableAttributedString(string: style.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+            title.append(NSAttributedString(string: "\n" + style.subtitle, attributes: [
+                .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
+            it.attributedTitle = title
+            styleMenu.addItem(it)
+        }
+        styleItem.submenu = styleMenu
+        menu.addItem(styleItem)
+
         let colorItem = NSMenuItem(title: "Lyrics Colour", action: nil, keyEquivalent: "")
         colorMenu.autoenablesItems = false
         autoItem.target = self
@@ -53,6 +75,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         autoStatusItem.target = self
         autoStatusItem.indentationLevel = 1
         colorMenu.addItem(autoStatusItem)
+        artworkItem.target = self
+        colorMenu.addItem(artworkItem)
         colorMenu.addItem(.separator())
         for (i, preset) in ColorPreset.all.enumerated() {
             let it = NSMenuItem(title: preset.name, action: #selector(pickPreset(_:)), keyEquivalent: "")
@@ -76,7 +100,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let bigger = NSMenuItem(title: "Bigger", action: #selector(zoomIn), keyEquivalent: "")
         let smaller = NSMenuItem(title: "Smaller", action: #selector(zoomOut), keyEquivalent: "")
         let reset = NSMenuItem(title: "Reset Size", action: #selector(zoomReset), keyEquivalent: "")
-        let hint = NSMenuItem(title: "Tip: pinch on the lyrics, or ⌘ + scroll", action: nil, keyEquivalent: "")
+        let hint = NSMenuItem(title: "Tip: hold ⌘ and scroll on the lyrics", action: nil, keyEquivalent: "")
         hint.isEnabled = false
         for it in [bigger, smaller, reset] { it.target = self; it.isEnabled = true; sizeMenu.addItem(it) }
         sizeMenu.addItem(.separator())
@@ -93,6 +117,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         launchItem.target = self
         menu.addItem(launchItem)
+        eggsItem.target = self
+        menu.addItem(eggsItem)
         menu.addItem(.separator())
 
         let quit = NSMenuItem(title: "Quit Overlyric", action: #selector(quit), keyEquivalent: "q")
@@ -151,6 +177,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     // MARK: NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        let style = settings.style
+        for it in styleMenu.items { it.state = LyricsStyle.allCases.indices.contains(it.tag) && LyricsStyle.allCases[it.tag] == style ? .on : .off }
+        // The easter-egg switch is itself a little secret: it only shows while ⌥ is held.
+        eggsItem.isHidden = !NSEvent.modifierFlags.contains(.option)
+        eggsItem.state = settings.easterEggs ? .on : .off
         sizeSlider.doubleValue = Double(settings.fontSize)
         sizeValueLabel.stringValue = "\(Int(settings.fontSize.rounded())) pt"
         toggleItem.state = settings.enabled ? .on : .off
@@ -161,20 +192,21 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         statusDetailItem.title = status.detail
         statusDetailItem.isHidden = status.detail.isEmpty
         let current = settings.color.usingColorSpace(.sRGB)
-        let auto = settings.autoContrast
+        let mode = settings.colorMode
+        let auto = mode == .autoContrast
         autoItem.state = auto ? .on : .off
+        artworkItem.state = mode == .artwork ? .on : .off
         for it in colorMenu.items where it.tag < ColorPreset.all.count && !it.isSeparatorItem && it.action == #selector(pickPreset(_:)) {
             let preset = ColorPreset.all[it.tag].color.usingColorSpace(.sRGB)
-            it.state = (!auto && current != nil && preset != nil && Self.close(current!, preset!)) ? .on : .off
+            it.state = (mode == .manual && current != nil && preset != nil && Self.close(current!, preset!)) ? .on : .off
         }
         let autoStatus: (String, Bool)
         switch (auto, controller.sampler.status) {
         case (false, _): autoStatus = ("", false)
-        case (true, .needsPermission): autoStatus = ("Allow Screen Recording in System Settings…", true)
-        case (true, .needsRelaunch): autoStatus = ("Quit and reopen Overlyric to finish enabling", false)
+        case (true, .needsPermission): autoStatus = ("Needs Screen Recording — click to open Settings", true)
         case (true, .failed(let msg)): autoStatus = ("Can't read the screen (\(msg))", false)
-        case (true, .sampling): autoStatus = ("Reading the screen behind the lyrics", false)
-        case (true, .off): autoStatus = (BackgroundSampler.hasPermission ? "Starts when lyrics are showing" : "Allow Screen Recording in System Settings…", !BackgroundSampler.hasPermission)
+        case (true, .sampling): autoStatus = ("Picking readable colours from your screen", false)
+        case (true, .off): autoStatus = ("Starts when lyrics are showing", false)
         }
         autoStatusItem.title = autoStatus.0
         autoStatusItem.isHidden = autoStatus.0.isEmpty
@@ -188,10 +220,24 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     // MARK: Actions
 
     @objc private func toggleEnabled() { settings.enabled.toggle() }
+    @objc private func toggleEggs() { settings.easterEggs.toggle() }
+
+    @objc private func pickStyle(_ sender: NSMenuItem) {
+        guard LyricsStyle.allCases.indices.contains(sender.tag) else { return }
+        settings.style = LyricsStyle.allCases[sender.tag]
+    }
     @objc private func toggleLock() { settings.clickThrough.toggle() }
 
     @objc private func toggleAuto() {
-        settings.autoContrast.toggle()
+        let turningOn = settings.colorMode != .autoContrast
+        settings.colorMode = turningOn ? .autoContrast : .manual
+        // The Screen Recording prompt is shown only here, when the user explicitly turns Auto on —
+        // never at launch.
+        if turningOn { controller.sampler.requestPermission() }
+    }
+
+    @objc private func toggleArtwork() {
+        settings.colorMode = settings.colorMode == .artwork ? .manual : .artwork
     }
 
     @objc private func autoStatusClicked() {
@@ -201,12 +247,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func pickPreset(_ sender: NSMenuItem) {
         guard ColorPreset.all.indices.contains(sender.tag) else { return }
-        if settings.autoContrast { settings.autoContrast = false }
+        if settings.colorMode != .manual { settings.colorMode = .manual }
         settings.color = ColorPreset.all[sender.tag].color
     }
 
     @objc private func customColor() {
-        if settings.autoContrast { settings.autoContrast = false }
+        if settings.colorMode != .manual { settings.colorMode = .manual }
         let panel = NSColorPanel.shared
         panel.showsAlpha = false
         panel.isContinuous = true
