@@ -272,6 +272,16 @@ import OverlyricCore
         text = t
         lineIndex = timed?.1
         reveal = nil
+        if timed == nil, leaving != nil {
+            // Nothing to type (♪ / a note): let the outgoing line clear first, then fade in.
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0
+            a.toValue = 1
+            a.beginTime = t.convertTime(CACurrentMediaTime(), from: nil) + 0.07
+            a.duration = 0.22
+            a.fillMode = .backwards
+            t.add(a, forKey: "enter")
+        }
         if let (st, _) = timed, let layout = t.layout {
             let r = RevealMask(layout: layout, style: .characters, slack: ctx.fontSize * 0.2)
             t.mask = r.mask
@@ -491,6 +501,8 @@ import OverlyricCore
 
     private static let popKey = "pop"
     private static let popDuration: CFTimeInterval = 0.28
+    /// No word of the new line pops before this moment (the outgoing line is still clearing).
+    private var enterAt: CFTimeInterval = 0
 
     func show(_ content: StyleContent, advancing: Bool, context ctx: RenderContext) -> CGSize {
         let leaving = advancing ? block : nil
@@ -510,6 +522,7 @@ import OverlyricCore
             block?.removeFromSuperlayer()
         }
         words.removeAll()
+        enterAt = leaving != nil ? CACurrentMediaTime() + 0.06 : 0
 
         let b = QuietLayer()
         b.anchorPoint = CGPoint(x: 0.5, y: 1)
@@ -640,7 +653,7 @@ import OverlyricCore
                 continue
             }
             l.opacity = 1
-            let start = st.clock.hostTime(of: words[k].at)
+            let start = max(st.clock.hostTime(of: words[k].at), enterAt)
             guard start + Self.popDuration > now else { continue }     // already sung
             let pop = CAKeyframeAnimation(keyPath: "transform.scale")
             pop.values = [0.4, 1.12, 1.0]

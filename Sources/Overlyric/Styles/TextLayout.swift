@@ -115,13 +115,30 @@ final class TextLayout {
             var last = f.used.minX
             while c < NSMaxRange(f.chars) {
                 let range = ns.rangeOfComposedCharacterSequence(at: c)
-                last = max(last, caretX(after: c, in: f))
+                var stop = caretX(after: c, in: f)
+                // Stop short of any part of the NEXT character that reaches back left of its origin
+                // (a j hook, a y tail, a serif), so it never peeks out before it is typed.
+                let next = NSMaxRange(range)
+                if next < NSMaxRange(f.chars) {
+                    let start = glyphX(glyph(forCharacter: next)) + min(0, inkMinX(ofCharacter: next))
+                    stop = min(stop, start)
+                }
+                last = max(last, stop)
                 stops.append((fi, last))
                 c = NSMaxRange(range)
             }
         }
         return stops
     }()
+
+    /// Left ink extent (relative to the glyph origin) of the first glyph of character `c`.
+    private func inkMinX(ofCharacter c: Int) -> CGFloat {
+        guard let font = storage.attribute(.font, at: c, effectiveRange: nil) as? NSFont else { return 0 }
+        var g = manager.cgGlyph(at: glyph(forCharacter: c))
+        var r = CGRect.zero
+        CTFontGetBoundingRectsForGlyphs(font as CTFont, .horizontal, &g, &r, 1)
+        return r.isNull ? 0 : r.minX
+    }
 
     /// Draws the text into a layer context (bottom-left origin) whose bounds are `size`.
     func draw(in ctx: CGContext, bounds: CGRect) {
