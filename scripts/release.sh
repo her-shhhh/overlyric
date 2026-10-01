@@ -71,6 +71,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$UNIVERSAL" "$APP/Contents/MacOS/$NAME"
 cp "$PLIST" "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+README_NAME="Read This or Hum Forever.txt"
+./scripts/render-readme.sh "$APP/Contents/Resources/$README_NAME"   # opened from the app's menu
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 chmod -R u+rwX,go+rX "$APP"   # Gatekeeper must be able to read the signature as any user
 
@@ -95,11 +97,7 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE" "$DIST"
 ditto "$APP" "$STAGE/$NAME.app"
 ln -s /Applications "$STAGE/Applications"
-# The friends' read-me lives in Resources/friends-readme.txt ({{VERSION}} / {{MIN_OS}} are filled in here).
-README_NAME="${README_NAME:-Read This or Hum Forever.txt}"
-README="$STAGE/$README_NAME"
-sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{MIN_OS}}/${MIN_OS%%.*}/g" Resources/friends-readme.txt > "$README"
-LC_ALL=C grep -n '[^ -~]' "$README" && die "$README_NAME must be plain ASCII (lines above)"
+cp "$APP/Contents/Resources/$README_NAME" "$STAGE/$README_NAME"   # the same guide, next to the app
 
 rm -f "$DMG"
 echo "▸ hdiutil create $DMG"
