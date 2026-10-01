@@ -32,8 +32,8 @@ front of your colleagues.
 
 SET IT UP (2 minutes, once)
 
-1. In the Overlyric window this read-me came from, drag Overlyric
-   onto the Applications folder. Do NOT double-click it in there:
+1. In the Overlyric download window, drag Overlyric onto the
+   Applications folder. Do NOT double-click it in there:
    macOS won't remember that you said yes for an app opened inside
    that window, and will keep blocking it. Forever. Like a song stuck
    on repeat, but worse. (Already did? No harm, just drag it over.)
@@ -74,6 +74,8 @@ USE IT
   below), or Match album artwork.
 - There are a few easter eggs hidden in here. You'll find them.
   Probably. Keep the music playing and they'll find you.
+- Lost this guide? It lives in the mic menu too: "Read This or Hum
+  Forever" opens it again, any time.
 
 
 ABOUT THE SCARY WARNINGS (why they appear, and why it's fine)
