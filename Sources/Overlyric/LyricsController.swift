@@ -37,6 +37,10 @@ final class LyricsController {
     /// above them.
     private var welcomeUntil: Date?
     private var welcomeAboveLyrics = false
+    /// First launch ever: the welcome song is due until this time (see `playFirstSongIfDue`).
+    private var firstSongDue: Date?
+    private var firstSongTries = 0
+    private var firstSongNextTry = Date.distantPast
     /// Auto colour before its first look at the screen: plain white, not the manual colour, so turning
     /// Auto on visibly changes something even before (or without) Screen Recording access.
     private static let autoStartColor = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
@@ -72,7 +76,10 @@ final class LyricsController {
             MainActor.assumeIsolated { self?.panel.moveTop(to: self?.settings.windowTop) }
         }
 
-        monitor.onChange = { [weak self] in self?.playbackChanged() }
+        monitor.onChange = { [weak self] in
+            self?.playbackChanged()
+            self?.playFirstSongIfDue()
+        }
         monitor.setActive(settings.enabled)
         monitor.start()
         if Onboarding.takeWelcome() {
@@ -82,6 +89,7 @@ final class LyricsController {
                 self?.refresh()
             }
         }
+        if Onboarding.takeFirstSong() { startFirstSong() }
         refresh()
     }
 
@@ -309,13 +317,47 @@ final class LyricsController {
         sampler.setEnabled(false)
     }
 
+    // MARK: First song
+
+    /// The very first launch plays the welcome song once, opening Spotify in the background if needed.
+    /// It waits for the Automation permission (which the first read of Spotify asks for) for ten minutes.
+    private func startFirstSong() {
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyMonitor.bundleID) != nil else { return }
+        firstSongDue = Date().addingTimeInterval(600)
+        if !monitor.isSpotifyRunning { Self.openSpotify(activate: false) }
+        playFirstSongIfDue()
+    }
+
+    /// Asks Spotify to play the welcome song, and asks again (a few times, 3 s apart) until it's on: a
+    /// Spotify that has only just opened can miss the first request.
+    private func playFirstSongIfDue() {
+        guard let due = firstSongDue else { return }
+        let snap = monitor.snapshot
+        if snap.isPlaying, let track = snap.track, Onboarding.isFirstSong(track) {
+            Log.spotify.notice("welcome song is playing")
+            firstSongDue = nil
+            return
+        }
+        guard Date() < due, firstSongTries < 6 else {
+            Log.spotify.notice("welcome song skipped (tries=\(self.firstSongTries, privacy: .public))")
+            firstSongDue = nil
+            return
+        }
+        guard monitor.automation == .granted, monitor.isSpotifyRunning, Date() >= firstSongNextTry else { return }
+        firstSongTries += 1
+        firstSongNextTry = Date().addingTimeInterval(3)
+        Log.spotify.notice("playing the welcome song (try \(self.firstSongTries, privacy: .public))")
+        monitor.play(uri: Onboarding.firstSongURI)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.1) { [weak self] in self?.playFirstSongIfDue() }
+    }
+
     // MARK: Spotify
 
-    /// Brings Spotify to the front (launching it if needed), like `open -a Spotify`.
-    static func openSpotify() {
+    /// Opens Spotify (launching it if needed), like `open -a Spotify`; in front unless `activate` is false.
+    static func openSpotify(activate: Bool = true) {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyMonitor.bundleID) else { return }
         let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
+        config.activates = activate
         NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
             if let error { Log.ui.error("open Spotify failed: \(error.localizedDescription, privacy: .public)") }
         }

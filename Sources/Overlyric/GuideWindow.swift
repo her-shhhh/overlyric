@@ -138,7 +138,7 @@ final class GuideWindow: NSObject {
         return base
     }
 
-    /// The app's lemon, deepened to a readable gold on light backgrounds.
+    /// A soft yellow, deepened to a readable gold on light backgrounds.
     static let accent = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor(srgbRed: 1.00, green: 0.89, blue: 0.40, alpha: 1)

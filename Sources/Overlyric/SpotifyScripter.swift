@@ -64,6 +64,15 @@ final class SpotifyScripter: NSObject, SBApplicationDelegate {
         }
     }
 
+    /// Plays the given track ("spotify:track:…") from the top.
+    func play(uri: String, pid: pid_t) {
+        queue.async {
+            let play = NSSelectorFromString("playTrack:inContext:")
+            guard let app = self.bridge(pid: pid), app.responds(to: play) else { return }
+            app.perform(play, with: uri, with: nil)
+        }
+    }
+
     private func bridge(pid: pid_t) -> SBApplication? {
         if app == nil || appPID != pid {
             app = SBApplication(processIdentifier: pid)

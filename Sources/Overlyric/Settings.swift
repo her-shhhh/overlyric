@@ -9,6 +9,7 @@ struct ColorPreset {
     let color: NSColor
     /// Menu order; the first entry is the default lyric colour.
     static let all: [ColorPreset] = [
+        .init(name: "Yellow", color: NSColor(srgbRed: 1.00, green: 0.84, blue: 0.04, alpha: 1)),
         .init(name: "Lemon", color: NSColor(srgbRed: 1.00, green: 0.89, blue: 0.40, alpha: 1)),
         .init(name: "White", color: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)),
         .init(name: "Mint", color: NSColor(srgbRed: 0.56, green: 0.94, blue: 0.78, alpha: 1)),

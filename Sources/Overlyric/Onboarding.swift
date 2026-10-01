@@ -1,4 +1,5 @@
 import AppKit
+import OverlyricCore
 
 /// First-run experience for people who got the app as a file: makes sure it lives in /Applications
 /// (so Launch at Login works and macOS stops running it from a temporary read-only location) and tells
@@ -6,6 +7,7 @@ import AppKit
 @MainActor
 enum Onboarding {
     private static let welcomedKey = "overlyric.welcomed"
+    private static let firstSongKey = "overlyric.firstSongPlayed"
 
     /// True when macOS is running us from a disk image or from App Translocation (a random read-only
     /// copy used for quarantined apps that were never moved).
@@ -105,12 +107,26 @@ enum Onboarding {
     }
 
     /// The very first launch shows a short hello in the overlay (only once, ever).
-    static func takeWelcome() -> Bool {
-        let d = UserDefaults.standard
-        guard !d.bool(forKey: welcomedKey) else { return false }
-        d.set(true, forKey: welcomedKey)
-        return true
-    }
+    static func takeWelcome() -> Bool { once(welcomedKey) }
 
     static let welcomeText = "Overlyric is on 🎤  Play a song on Spotify — the mic in your menu bar has all the settings"
+
+    /// The very first launch also plays a welcome song (only once, ever).
+    static func takeFirstSong() -> Bool { once(firstSongKey) }
+
+    /// Coldplay's "Yellow", to go with the yellow lyrics.
+    static let firstSongURI = "spotify:track:3AJwUDP919kvQ9QcozQPxg"
+
+    /// Also matches a regional copy of the song, which Spotify gives a different id.
+    static func isFirstSong(_ track: SpotifyTrack) -> Bool {
+        track.id == firstSongURI || (track.name == "Yellow" && track.artist.contains("Coldplay"))
+    }
+
+    /// True the first time it's asked for `key`, false ever after.
+    private static func once(_ key: String) -> Bool {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: key) else { return false }
+        d.set(true, forKey: key)
+        return true
+    }
 }

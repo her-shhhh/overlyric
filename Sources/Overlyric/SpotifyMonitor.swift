@@ -75,6 +75,18 @@ final class SpotifyMonitor {
     func restart(trackID: String) {
         guard let spotify = runningSpotify, automation == .granted else { return }
         scripter.restart(trackID: trackID, pid: spotify.processIdentifier)
+        pollSoon()
+    }
+
+    /// Plays a track ("spotify:track:…") from the top.
+    func play(uri: String) {
+        guard let spotify = runningSpotify, automation == .granted else { return }
+        scripter.play(uri: uri, pid: spotify.processIdentifier)
+        pollSoon()
+    }
+
+    /// A full read shortly after telling Spotify to do something, to pick up the result.
+    private func pollSoon() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             MainActor.assumeIsolated { self?.pollNow(full: true) }
         }
