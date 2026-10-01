@@ -6,12 +6,12 @@
 
 I always have music on while I work, and a song is twice as good when I can sing along. Today at the
 office, in one of those long "Claude is cooking, please wait" breaks, my songs were playing and I couldn't
-sing a single line. I never know the words. (Exhibit A: that Anuv Jain song where I confidently moved the
-dimples from her cheeks to her hair. You were there. You remember.) And Spotify's lyrics view would swallow
-half my tiny laptop screen. So, bored and armed with the shiny new Ultracode mode on Claude Fable, I
-thought: let's one-shot a fix. Reader, it was not one shot. It was hours of very dedicated "work". But
-Claude built its own karaoke machine for the breaks it gives me, and now the lyrics float right on my
-screen. My colleagues are thrilled.
+sing a single line. I never know the words. (Exhibit A: that Anuv Jain song, where I sang *"baalon ke
+gaddhon mein tere"* with my whole chest. It's *"gaalon"*. You were there. You remember.) And Spotify's
+lyrics view would swallow half my tiny laptop screen. So, bored and armed with the shiny new Ultracode mode
+on Claude Fable, I thought: let's one-shot a fix. Reader, it was not one shot. It was hours of very
+dedicated "work". But Claude built its own karaoke machine for the breaks it gives me, and now the lyrics
+float right on my screen. My colleagues are thrilled.
 
 ## What it is
 
@@ -33,8 +33,9 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
    your approval there and keeps asking.
 2. Open Overlyric from Applications. The first time, macOS blocks apps that aren't from the App Store or
    a registered developer:
-   - **macOS 15 Sequoia / 26 Tahoe:** click **Done**, then open **System Settings › Privacy & Security**,
-     scroll down and click **Open Anyway** next to Overlyric (within an hour), and confirm.
+   - **macOS 15 Sequoia / 26 Tahoe:** click **Done** (not *Move to Bin*), then open **System Settings ›
+     Privacy & Security**, scroll to the **Security** section and click **Open Anyway** next to Overlyric
+     (within about an hour). macOS asks once more: click **Open** and enter your Mac login password.
    - **macOS 14 Sonoma:** Control-click Overlyric › **Open** › **Open**.
 3. Look for the **🎤 mic icon in the menu bar** (top right — on a notched MacBook it may hide behind the
    notch if your menu bar is full). There's no Dock icon; everything lives in that menu. The same menu
@@ -57,6 +58,10 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
   showing you when it looks.
 - **What it connects to:** lrclib.net for lyrics, and Spotify's image server for the album cover if you
   choose "Match album artwork". No login, no account, no tracking, no ads.
+- **The menu-bar microphone is just a logo.** Overlyric never uses your real microphone (it would need your
+  permission, and it never asks).
+- On macOS 15 and later, Auto colour's Screen Recording permission may re-ask about once a month
+  ("bypass the system private window picker") — same tiny patch; allow it or switch Auto off.
 - **To remove it:** quit it from the microphone menu and drag it from Applications to the Bin.
 
 ## The menu
