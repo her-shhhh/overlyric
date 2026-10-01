@@ -32,7 +32,7 @@ Menu bar (top-right, the 🎤 icon):
 | **Show Lyrics** | The on/off toggle. The icon dims when off. |
 | status lines | What's playing and whether synced lyrics were found. |
 | **Lyrics Colour ▸** | 8 presets + *Custom…* (system colour picker, live). |
-| **Text Size ▸** | Bigger / Smaller / Reset — or just **pinch** on the lyrics (⌘ + scroll works too). |
+| **Text Size ▸** | A live **slider** (14–160 pt) plus Bigger / Smaller / Reset — or just **pinch** on the lyrics (⌘ + scroll works too). |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through it. |
 | **Reset Position** | Back to the bottom-centre of the main screen. |
 | **Launch at Login** | Registers with macOS Login Items. |

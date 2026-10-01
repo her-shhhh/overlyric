@@ -14,6 +14,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let colorMenu = NSMenu(title: "Lyrics Colour")
     private let lockItem = NSMenuItem(title: "Lock Position (click-through)", action: #selector(toggleLock), keyEquivalent: "")
+    private let sizeSlider = NSSlider(value: Double(Settings.defaultFontSize), minValue: Double(Settings.minFontSize),
+                                      maxValue: Double(Settings.maxFontSize), target: nil, action: nil)
+    private let sizeValueLabel = NSTextField(labelWithString: "")
     private let launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
 
     init(controller: LyricsController) {
@@ -58,10 +61,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         let sizeItem = NSMenuItem(title: "Text Size", action: nil, keyEquivalent: "")
         let sizeMenu = NSMenu(title: "Text Size")
+        sizeMenu.addItem(makeSliderItem())
+        sizeMenu.addItem(.separator())
         let bigger = NSMenuItem(title: "Bigger", action: #selector(zoomIn), keyEquivalent: "")
         let smaller = NSMenuItem(title: "Smaller", action: #selector(zoomOut), keyEquivalent: "")
         let reset = NSMenuItem(title: "Reset Size", action: #selector(zoomReset), keyEquivalent: "")
-        let hint = NSMenuItem(title: "Tip: pinch on the lyrics to zoom", action: nil, keyEquivalent: "")
+        let hint = NSMenuItem(title: "Tip: pinch on the lyrics, or ⌘ + scroll", action: nil, keyEquivalent: "")
         hint.isEnabled = false
         for it in [bigger, smaller, reset] { it.target = self; sizeMenu.addItem(it) }
         sizeMenu.addItem(.separator())
@@ -88,6 +93,37 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         statusItem.button?.toolTip = "Overlyric — Spotify lyrics overlay"
     }
 
+    /// A live slider inside the Text Size submenu: drag for fine control, the overlay follows instantly.
+    private func makeSliderItem() -> NSMenuItem {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 262, height: 34))
+        let small = NSTextField(labelWithString: "A")
+        small.font = .systemFont(ofSize: 11, weight: .semibold)
+        small.alignment = .center
+        small.frame = NSRect(x: 12, y: 9, width: 16, height: 16)
+        sizeSlider.frame = NSRect(x: 30, y: 7, width: 160, height: 20)
+        sizeSlider.isContinuous = true
+        sizeSlider.target = self
+        sizeSlider.action = #selector(sliderChanged(_:))
+        let big = NSTextField(labelWithString: "A")
+        big.font = .systemFont(ofSize: 20, weight: .heavy)
+        big.alignment = .center
+        big.frame = NSRect(x: 192, y: 4, width: 22, height: 26)
+        sizeValueLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        sizeValueLabel.textColor = .secondaryLabelColor
+        sizeValueLabel.alignment = .right
+        sizeValueLabel.frame = NSRect(x: 214, y: 9, width: 40, height: 16)
+        for v in [small, sizeSlider, big, sizeValueLabel] { container.addSubview(v) }
+        let item = NSMenuItem()
+        item.view = container
+        return item
+    }
+
+    @objc private func sliderChanged(_ sender: NSSlider) {
+        let size = CGFloat(sender.doubleValue.rounded())
+        sizeValueLabel.stringValue = "\(Int(size)) pt"
+        if size != settings.fontSize { settings.fontSize = size }
+    }
+
     private static let icon: NSImage? = {
         let image = NSImage(systemSymbolName: "music.mic", accessibilityDescription: "Overlyric")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .medium))
@@ -104,6 +140,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     // MARK: NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        sizeSlider.doubleValue = Double(settings.fontSize)
+        sizeValueLabel.stringValue = "\(Int(settings.fontSize.rounded())) pt"
         toggleItem.state = settings.enabled ? .on : .off
         lockItem.state = settings.clickThrough ? .on : .off
         launchItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
