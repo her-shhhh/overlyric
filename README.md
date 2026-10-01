@@ -20,7 +20,8 @@ everything on your Mac — big, clean, Instagram-story style — and keeps them 
      scroll down and click **Open Anyway** next to Overlyric (within an hour), and confirm.
    - **macOS 14 Sonoma:** Control-click Overlyric › **Open** › **Open**.
 3. Look for the **🎤 mic icon in the menu bar** (top right — on a notched MacBook it may hide behind the
-   notch if your menu bar is full). There's no Dock icon; everything lives in that menu.
+   notch if your menu bar is full). There's no Dock icon; everything lives in that menu. The same menu
+   also opens when you **right-click the lyrics**, or when you open Overlyric again while it's running.
 4. Play a song in the **Spotify desktop app**. The first time, click **Allow** when macOS asks whether
    Overlyric may control Spotify — that's how it reads the song and its position.
 
@@ -59,9 +60,16 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 - **Auto** reads a tiny patch of the screen behind the lyrics and picks a fresh, vivid colour that's
   clearly readable on it — bright colours on dark screens, deep ones on light screens — from the whole
   spectrum. It changes only when the background makes the current colour hard to read, or when the song
-  changes. macOS asks for **Screen Recording** permission the first time you turn it on (and only then);
-  the purple screen-capture dot in the menu bar appears briefly when it samples.
+  changes. macOS asks for **Screen Recording** permission the first time you turn it on (and only then):
+  allow it in System Settings, then click the Auto status line in the menu to reopen Overlyric — macOS
+  only applies the permission to a freshly opened app. It never asks again by itself, and the grant
+  survives updates. The purple screen-capture dot in the menu bar appears briefly when it samples.
 - **Match album artwork** uses the cover's theme colour, brightened for reading.
+
+## Easter eggs
+
+A few small surprises are switched on by default — hold **⌥ (Option)** while the menu is open to find
+the switch.
 
 ## Where do the lyrics come from?
 
