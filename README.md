@@ -1,19 +1,33 @@
 # Overlyric
 
-Sing along to anything on Spotify. Overlyric floats the lyrics of the song that's playing on top of
-everything on your Mac — big, clean, Instagram-story style — and keeps them perfectly in time.
+*Sing along to anything on Spotify — without knowing a single word.*
 
-- **On top of everything**, on every Space and over full-screen apps; only the words are visible.
+## How this happened
+
+I always have music on while I work, and a song is twice as good when I can sing along. These days most
+of my singing happens between Claude sessions: Claude writes the code, I perform for an audience of
+zero. The problem? I never knew the words — so it was confident humming and the odd made-up line. So I
+asked Claude to fix that too, and it built this. Yes, Claude built its own karaoke machine for the
+breaks it gives me. Now the lyrics float right on my screen, and the breaks are louder.
+
+## What it is
+
+A tiny Mac menu-bar app that floats the lyrics of whatever Spotify is playing on top of everything —
+big, clean, Instagram-story style, perfectly in time. Only the words show; the rest is see-through.
+
+- **On top of everything**, on every Space and over full-screen apps.
 - **Ten lyric styles** — the Instagram ones and a few of our own (below).
 - **Colours your way** — pick one, let it pick vivid readable colours from what's behind it, or match
   the album artwork.
 - **Drag** the lyrics anywhere (right up to the screen edges), **⌘ + scroll** on them to resize,
-  **click** them to jump to Spotify.
-- No Spotify login, no account, no API keys.
+  **click** them to jump to Spotify, **right-click** for the menu.
+- No Spotify login, no account, no subscription, no nonsense.
 
 ## For friends: install
 
-1. Open **Overlyric-x.y.z.dmg** and drag **Overlyric** onto **Applications**.
+1. Open **Overlyric-x.y.z.dmg** (and the file called **"Read This or Hum Forever"** — it's short). Drag
+   **Overlyric** onto **Applications**. Don't double-click it inside the DMG window: macOS won't remember
+   your approval there and keeps asking.
 2. Open Overlyric from Applications. The first time, macOS blocks apps that aren't from the App Store or
    a registered developer:
    - **macOS 15 Sequoia / 26 Tahoe:** click **Done**, then open **System Settings › Privacy & Security**,
@@ -59,6 +73,7 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 
 | Style | What it looks like |
 |---|---|
+| **Jump** *(default)* | Words jump up into place as they're sung. |
 | **Two Lines** | The line being sung, and the next one waiting underneath. |
 | **One Line** | Just the line being sung. |
 | **Scrolling Lyrics** | The whole song drifting slowly upwards, the current line lit (Instagram's teleprompter). |
@@ -66,7 +81,6 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 | **Karaoke** | Each line lights up left to right as it's sung. |
 | **Dynamic** | Big billboard rows of mixed sizes, words popping in as they're sung. |
 | **Pop** | One word at a time, flashing on as it's sung. |
-| **Jump** | Words jump up into place as they're sung. |
 | **Glide** | Lyrics glide right to left like a ticker. |
 | **Cube** | Lines roll over like the faces of a cube. |
 
@@ -80,6 +94,7 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
   only applies the permission to a freshly opened app. It never asks again by itself, and the grant
   survives updates. The purple screen-capture dot in the menu bar appears briefly when it samples.
 - **Match album artwork** uses the cover's theme colour, brightened for reading.
+- Out of the box the lyrics are **Lemon** yellow; the presets, Custom… and Auto are in Lyrics Colour.
 
 ## Easter eggs
 

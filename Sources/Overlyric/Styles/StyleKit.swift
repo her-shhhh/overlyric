@@ -4,7 +4,10 @@ import OverlyricCore
 
 /// The lyric presentation styles offered in the menu (Instagram-inspired).
 enum LyricsStyle: String, CaseIterable {
-    case classic, single, scroll, typewriter, karaoke, dynamic, pop, jump, glide, cube
+    // Menu order; the first case is the default style.
+    case jump, classic, single, scroll, typewriter, karaoke, dynamic, pop, glide, cube
+
+    static let defaultStyle: LyricsStyle = .jump
 
     var title: String {
         switch self {

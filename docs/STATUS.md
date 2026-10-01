@@ -16,8 +16,8 @@
   **Reliable path:** drag Overlyric from the DMG window onto Applications → open it from /Applications →
   Done → System Settings › Privacy & Security › **Open Anyway** (once). The move offer below only helps on a
   launch from the DMG that Gatekeeper lets through.
-- The DMG's `Read me first.txt` (written by `scripts/release.sh`) still suggests "just double-click Overlyric
-  here" as an alternative to dragging — that leads into the loop; remove it in the next release.
+- The friends' read-me (now `Read This or Hum Forever.txt`, from `Resources/friends-readme.txt`) tells
+  people to drag to Applications and never double-click inside the DMG window.
 - **Bug (fixed in 0.1.1/0.1.2, not yet re-tested live):** "Move to Applications" copied the app WITH its
   quarantine flag, so the relaunched copy was blocked/translocated and nothing ran; "Not Now" worked. Now the
   installed copy has the flag cleared, an identical-version copy is reused, the app relaunches after the old

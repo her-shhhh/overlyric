@@ -15,7 +15,7 @@ final class OverlayView: NSView {
         didSet { if color != oldValue { renderer.recolor(context: context) } }
     }
 
-    var style: LyricsStyle = .classic {
+    var style: LyricsStyle = .defaultStyle {
         didSet {
             guard style != oldValue else { return }
             renderer.teardown()
@@ -87,7 +87,7 @@ final class OverlayView: NSView {
     /// Moves with the words: holds the renderer's layer and the easter eggs' toast and particles. Its
     /// origin is the top-centre of the words.
     let block = QuietLayer()
-    private(set) var renderer: StyleRenderer = LyricsStyle.classic.makeRenderer()
+    private(set) var renderer: StyleRenderer = LyricsStyle.defaultStyle.makeRenderer()
     private var layoutGeneration = 0
     private var blockSize: CGSize = .zero
     /// Where the words rest on screen (screen coordinates).

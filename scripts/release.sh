@@ -95,67 +95,11 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE" "$DIST"
 ditto "$APP" "$STAGE/$NAME.app"
 ln -s /Applications "$STAGE/Applications"
-README="$STAGE/Read me first.txt"
-cat > "$README" <<EOF
-Overlyric $VERSION - Spotify lyrics floating on your screen
-Needs macOS ${MIN_OS%%.*} or later (Apple Silicon or Intel) and the Spotify desktop app.
-
-ABOUT THE SCARY-LOOKING WARNINGS (why they appear, and why it's fine)
-- "Apple could not verify Overlyric is free of malware": macOS says
-  this about every app that isn't from the App Store or from a
-  developer in Apple's paid (\$99/year) programme. It is not a scan
-  result - Apple simply hasn't reviewed it. You approve it once.
-- "Overlyric wants access to control Spotify": macOS words this
-  broadly for any app that talks to another app. Overlyric only asks
-  Spotify which song is playing and how far in it is. It never touches
-  your account, playlists or likes (only exception: if you click the
-  "encore?" offer at the end of a song, it restarts that song).
-- "Screen Recording" (only if you turn on Lyrics Colour > Auto): it
-  looks at a tiny patch right behind the lyrics to pick a colour you
-  can read. Nothing is saved or sent. The purple dot in the menu bar
-  is macOS showing you when it looks.
-- It connects to lrclib.net (a free lyrics site) to fetch the lyrics,
-  and to Spotify's image server for the album cover if you choose
-  "Match album artwork". Nothing else: no login, no account, no
-  tracking, no ads.
-- To remove it: quit it from the microphone menu, then drag Overlyric
-  from Applications to the Bin.
-
-HOW TO INSTALL
-
-1. Drag Overlyric onto the Applications folder in this window.
-   Don't double-click it here: macOS won't remember your approval
-   for an app opened inside this window and keeps blocking it.
-
-2. The first time you open it, macOS blocks it because it is not
-   from the App Store. This happens only once:
-   - macOS 15 or later: click Done, then open System Settings >
-     Privacy & Security, scroll down and click Open Anyway next to
-     Overlyric (within an hour), and confirm with your password.
-   - macOS 14: Control-click Overlyric, choose Open, then click Open.
-
-3. Look for the microphone icon in the menu bar (top right). All the
-   settings live there; there is no Dock icon. On a MacBook with a
-   notch it can hide behind the notch if your menu bar is full.
-
-4. Play a song in Spotify. When macOS asks whether Overlyric may
-   control Spotify, click Allow. That is how it knows the song and
-   keeps the lyrics in time.
-
-Tips
-- Drag the lyrics to move them.
-- Hold Cmd and scroll on the lyrics to make them bigger or smaller.
-- Click the lyrics to jump to Spotify.
-- Lyrics Style in the menu has 10 looks (Typewriter, Karaoke, Pop...).
-- Screen Recording permission is only asked for if you turn on
-  Lyrics Colour > Auto (it peeks at a tiny patch behind the lyrics to
-  pick a colour you can read). After allowing it, reopen Overlyric.
-- Lyrics come from lrclib.net (free, no login). No Spotify account
-  access is needed or used.
-
-Enjoy!
-EOF
-LC_ALL=C grep -n '[^ -~]' "$README" && die "Read me first.txt must be plain ASCII (lines above)"
+# The friends' read-me lives in Resources/friends-readme.txt ({{VERSION}} / {{MIN_OS}} are filled in here).
+README_NAME="${README_NAME:-Read This or Hum Forever.txt}"
+README="$STAGE/$README_NAME"
+sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{MIN_OS}}/${MIN_OS%%.*}/g" Resources/friends-readme.txt > "$README"
+LC_ALL=C grep -n '[^ -~]' "$README" && die "$README_NAME must be plain ASCII (lines above)"
 
 rm -f "$DMG"
 echo "▸ hdiutil create $DMG"
