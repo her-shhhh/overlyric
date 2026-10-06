@@ -1,6 +1,6 @@
 # Overlyric
 
-*Sing along to anything on Spotify — without knowing a single word.*
+*Sing along to anything on Spotify or YouTube Music — without knowing a single word.*
 
 **[⬇️ Download the latest version](https://github.com/her-shhhh/overlyric/releases/latest)** — grab the `.dmg`, then open the file called *"Read This or Hum Forever"*.
 
@@ -16,7 +16,8 @@ lyrics float right on my screen. My colleagues are thrilled.
 
 ## What it is
 
-A tiny Mac menu-bar app that floats the lyrics of whatever Spotify is playing on top of everything —
+A tiny Mac menu-bar app that floats the lyrics of whatever Spotify (or YouTube Music, or anything else
+your Mac shows as Now Playing) is playing on top of everything —
 big, clean, Instagram-story style, perfectly in time. Only the words show; the rest is see-through.
 
 - **On top of everything**, on every Space and over full-screen apps.
@@ -25,7 +26,9 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
 - **Colours your way** — pick one, let it pick vivid readable colours from what's behind it, or match
   the album artwork.
 - **Drag** the lyrics anywhere (right up to the screen edges), **⌘ + scroll** on them to resize,
-  **click** them to jump to Spotify, **right-click** for the menu.
+  **click** them to jump to the player, **right-click** for the menu.
+- **Spotify or YouTube Music** — or a YouTube tab, Apple Music, anything in Now Playing (see
+  [YouTube Music & others](#youtube-music--others)).
 - No Spotify login, no account, no subscription, no nonsense.
 
 ## For friends: install
@@ -44,8 +47,10 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
    also opens when you **right-click the lyrics**, or when you open Overlyric again while it's running.
 4. Play a song in the **Spotify desktop app**. The first time, click **Allow** when macOS asks whether
    Overlyric may control Spotify — that's how it reads the song and its position.
+   Listening on YouTube Music instead? Pick **Listen To › YouTube Music & Others** in the menu.
 
-Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app.
+Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app — or, for YouTube
+Music, any browser or web app (macOS 14 – 15.3, see below).
 
 ### About the warnings (why they appear, and why it's fine)
 
@@ -73,6 +78,7 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 |---|---|
 | **Show Lyrics** | Turns the overlay on or off (the icon dims when off). |
 | status lines | What's playing and whether synced lyrics were found. |
+| **Listen To ▸** | **Spotify** *(default)* or **YouTube Music & Others** (anything in Now Playing). |
 | **Lyrics Style ▸** | Ten styles (below). |
 | **Lyrics Font ▸** | **Rounded** *(default)*, **Serif**, **Poster** or **Script** (below). |
 | **Lyrics Colour ▸** | **Auto** (colourful, always readable on what's behind), **Match album artwork**, 8 presets, or **Custom…** |
@@ -127,6 +133,24 @@ Typewriter, which always types in its own typewriter face.
 A few small surprises are switched on by default — hold **⌥ (Option)** while the menu is open to find
 the switch.
 
+## YouTube Music & others
+
+**Listen To › YouTube Music & Others** follows whatever macOS shows as **Now Playing** (the media tile in
+Control Centre) instead of Spotify: YouTube Music as a web app (Safari's *Add to Dock* or Chrome's
+*Install*) or in a browser tab, a YouTube video, Apple Music, a podcast app — anything that tells macOS
+what it's playing. No extension, no login and no permission prompt. Clicking the lyrics brings that app
+forward.
+
+- **YouTube videos** have titles like *"Meherbaan Full Video | BANG BANG! | …"* with the channel as the
+  artist. Overlyric reads the song out of them ("Song | Movie", "Singer | Song", "Artist - Song (Official
+  Video)", "Song Full Video"; VEVO and "- Topic" trimmed off the channel).
+- **Lyrics only show when they fit this version.** Lyrics are matched on the song's length, so a music
+  video with a longer intro or a different cut gets *"No synced lyrics"* rather than words that drift out
+  of time. The YouTube Music (album) version or an "Official Audio" upload usually matches.
+- **macOS 14 – 15.3 only.** Now Playing is read through MediaRemote, a part of macOS apps aren't
+  officially allowed to use; from macOS 15.4 Apple keeps it to its own apps, so there the menu says it
+  can't read Now Playing. Spotify works everywhere.
+
 ## Where do the lyrics come from?
 
 From [LRCLIB](https://lrclib.net), a free, open database of time-synced lyrics (Spotify doesn't let
@@ -147,7 +171,8 @@ on your Mac, so a song is only ever looked up once. Overlyric sends nothing else
 ```
 Sources/OverlyricCore    pure, unit-tested logic: LRC parsing, line lookup, lrclib matching, colour
                          choice, artwork colour, shake detection, lyrics disk cache
-Sources/Overlyric        the app: menu, overlay panel + host view, Spotify monitor, lyrics service,
+Sources/Overlyric        the app: menu, overlay panel + host view, Spotify and Now Playing monitors
+                         (PlaybackSource), lyrics service,
                          background sampler, easter eggs, onboarding
   Styles/                one renderer per lyric style on a shared Core Animation toolkit
 Tests/OverlyricCoreTests
