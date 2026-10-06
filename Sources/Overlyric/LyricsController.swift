@@ -75,6 +75,9 @@ final class LyricsController {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.panel.moveTop(to: self?.settings.windowTop) }
         }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stayOnThisSpace() }
+        }
 
         monitor.onChange = { [weak self] in
             self?.playbackChanged()
@@ -305,8 +308,16 @@ final class LyricsController {
         guard !visible else { return }
         visible = true
         panel.orderFrontRegardless()
+        stayOnThisSpace()
         view.updateMouseGate()
         if settings.colorMode != .manual { updateColorSource() }
+    }
+
+    /// Showing lyrics that macOS has left off the current desktop (see `OverlayPanel.rejoinAllSpaces`).
+    private func stayOnThisSpace() {
+        guard visible, !panel.isOnActiveSpace else { return }
+        Log.ui.notice("lyrics were missing from this Space; putting them back on every Space")
+        panel.rejoinAllSpaces()
     }
 
     private func hide() {

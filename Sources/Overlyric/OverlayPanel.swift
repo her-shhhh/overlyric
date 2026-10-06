@@ -15,7 +15,7 @@ final class OverlayPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        collectionBehavior = Self.everySpace
         hidesOnDeactivate = false
         isFloatingPanel = true          // NOTE: this resets `level` to .floating, so set the level AFTER it.
         level = .statusBar
@@ -28,6 +28,18 @@ final class OverlayPanel: NSPanel {
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    private static let everySpace: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+
+    /// Puts the lyrics back on every Space. Over days of running, macOS can drop the window from some
+    /// desktops (it keeps the all-Spaces flag but lives only on the old ones): the lyrics then stay for the
+    /// swipe and vanish on arrival, and ordering the window front doesn't bring it back. Clearing the
+    /// behaviour and setting it again on the next run-loop turn does (both in one go is ignored). Only works
+    /// while the window is on screen.
+    func rejoinAllSpaces() {
+        collectionBehavior = []
+        DispatchQueue.main.async { [weak self] in self?.collectionBehavior = Self.everySpace }
+    }
 
     /// Moves the lyrics so the window's top-centre is at `top` (or the default subtitle position).
     func moveTop(to top: NSPoint?) {
