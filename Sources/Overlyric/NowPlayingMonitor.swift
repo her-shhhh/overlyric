@@ -148,9 +148,11 @@ final class NowPlayingMonitor: PlaybackSource {
 
         let elapsed = Self.number(info[MediaRemote.Key.elapsed]) ?? 0
         let rate = Self.number(info[MediaRemote.Key.rate]) ?? (playing ? 1 : 0)
+        // Browsers flip the rate to 0 a moment before (or instead of) saying they paused.
+        let playing = playing && rate > 0
         let stamp = info[MediaRemote.Key.timestamp] as? Date ?? now
         var position = elapsed
-        if playing, rate > 0 { position += now.timeIntervalSince(stamp) * rate }
+        if playing { position += now.timeIntervalSince(stamp) * rate }
         if track.duration > 0 { position = min(position, track.duration) }
 
         playerBundleID = bundle
