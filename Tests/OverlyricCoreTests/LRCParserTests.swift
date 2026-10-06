@@ -94,8 +94,8 @@ import Testing
     }
 
     @Test func trackKinds() {
-        #expect(SpotifyTrack(id: "spotify:ad:123", name: "Ad", artist: "", album: "", duration: 30).isSong == false)
-        #expect(SpotifyTrack(id: "spotify:episode:1", name: "Pod", artist: "", album: "", duration: 30).isSong == false)
-        #expect(SpotifyTrack(id: "spotify:track:1", name: "Song", artist: "X", album: "", duration: 30).isSong == true)
+        #expect(Track(id: "spotify:ad:123", name: "Ad", artist: "", album: "", duration: 30).isSong == false)
+        #expect(Track(id: "spotify:episode:1", name: "Pod", artist: "", album: "", duration: 30).isSong == false)
+        #expect(Track(id: "spotify:track:1", name: "Song", artist: "X", album: "", duration: 30).isSong == true)
     }
 }

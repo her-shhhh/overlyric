@@ -16,6 +16,12 @@ import Testing
         #expect(TrackNameCleaner.titleVariants("(I Can't Get No) Satisfaction").last == "(I Can't Get No) Satisfaction")
     }
 
+    @Test func youTubeVideoSuffixesAreStripped() {
+        #expect(TrackNameCleaner.titleVariants("Kesariya (Official Video)").last == "Kesariya")
+        #expect(TrackNameCleaner.titleVariants("Blinding Lights [Official Audio]").last == "Blinding Lights")
+        #expect(TrackNameCleaner.titleVariants("Levitating (Lyric Video)").last == "Levitating")
+    }
+
     @Test func dedupesAndKeepsOrder() {
         #expect(TrackNameCleaner.titleVariants("Yellow") == ["Yellow"])
     }

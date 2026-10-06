@@ -118,7 +118,7 @@ enum Onboarding {
     static let firstSongURI = "spotify:track:3AJwUDP919kvQ9QcozQPxg"
 
     /// Also matches a regional copy of the song, which Spotify gives a different id.
-    static func isFirstSong(_ track: SpotifyTrack) -> Bool {
+    static func isFirstSong(_ track: Track) -> Bool {
         track.id == firstSongURI || (track.name == "Yellow" && track.artist.contains("Coldplay"))
     }
 

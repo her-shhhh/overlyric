@@ -31,11 +31,11 @@ final class LyricsService {
         session = URLSession(configuration: c)
     }
 
-    static func cacheKey(for track: SpotifyTrack) -> String {
+    static func cacheKey(for track: Track) -> String {
         track.id.isEmpty ? "\(track.name)|\(track.artist)|\(Int(track.duration))" : track.id
     }
 
-    func lyrics(for track: SpotifyTrack) async -> Result<SyncedLyrics?, LookupError> {
+    func lyrics(for track: Track) async -> Result<SyncedLyrics?, LookupError> {
         let key = Self.cacheKey(for: track)
         if let cached = cache[key] { return .success(cached) }
         switch disk.load(key) {
@@ -68,7 +68,7 @@ final class LyricsService {
     // MARK: Lookup chain (see docs/ARCHITECTURE.md § LyricsService)
 
     /// The parsed lyrics and the raw LRC text they came from (for the disk cache).
-    private func resolve(_ t: SpotifyTrack) async throws -> (SyncedLyrics?, String?) {
+    private func resolve(_ t: Track) async throws -> (SyncedLyrics?, String?) {
         let duration: TimeInterval? = t.duration > 0 ? t.duration : nil
         let primary = TrackNameCleaner.primaryArtist(t.artist)
         let titles = TrackNameCleaner.titleVariants(t.name)

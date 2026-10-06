@@ -1,6 +1,6 @@
 import Foundation
 
-/// Produces progressively looser spellings of a Spotify title / artist for lyric lookup.
+/// Produces progressively looser spellings of a title / artist (Spotify or YouTube) for lyric lookup.
 public enum TrackNameCleaner {
     private static let feat = try! NSRegularExpression(
         pattern: #"\s*[\(\[]\s*(feat\.?|ft\.?|featuring|with)\s+[^\)\]]*[\)\]]"#, options: .caseInsensitive)
@@ -8,7 +8,7 @@ public enum TrackNameCleaner {
         pattern: #"\s+(feat\.?|ft\.?|featuring)\s+.*$"#, options: .caseInsensitive)
     private static let dashSuffix = try! NSRegularExpression(pattern: #"\s+-\s+.*$"#)
     private static let bracketSuffix = try! NSRegularExpression(
-        pattern: #"\s*[\(\[][^\)\]]*(remaster|deluxe|live|version|edit|mix|mono|stereo|bonus|demo|acoustic|anniversary|edition|soundtrack|from |explicit|single|instrumental|sped up|slowed)[^\)\]]*[\)\]]"#,
+        pattern: #"\s*[\(\[][^\)\]]*(remaster|deluxe|live|version|edit|mix|mono|stereo|bonus|demo|acoustic|anniversary|edition|soundtrack|from |explicit|single|instrumental|sped up|slowed|official|video|audio|lyric|visuali[sz]er|full song)[^\)\]]*[\)\]]"#,
         options: .caseInsensitive)
 
     private static func apply(_ re: NSRegularExpression, _ s: String) -> String {

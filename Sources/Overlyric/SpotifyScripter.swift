@@ -13,7 +13,7 @@ final class SpotifyScripter: NSObject, SBApplicationDelegate {
         let state: PlayerState
         let position: TimeInterval   // seconds
         let sampledAt: Date          // when `position` was read
-        let track: SpotifyTrack?     // only on a full read
+        let track: Track?     // only on a full read
     }
 
     enum Failure: Error {
@@ -102,12 +102,12 @@ final class SpotifyScripter: NSObject, SBApplicationDelegate {
             return .success(Reading(state: state, position: position, sampledAt: sampledAt, track: nil))
         }
 
-        var track: SpotifyTrack?
+        var track: Track?
         if let t = app.value(forKey: "currentTrack") as? SBObject {
             let id = t.value(forKey: "id") as? String ?? ""
             let name = t.value(forKey: "name") as? String ?? ""
             if !(id.isEmpty && name.isEmpty) {
-                track = SpotifyTrack(
+                track = Track(
                     id: id, name: name,
                     artist: t.value(forKey: "artist") as? String ?? "",
                     album: t.value(forKey: "album") as? String ?? "",

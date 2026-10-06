@@ -45,6 +45,7 @@ final class Settings {
         static let style = "overlyric.style"
         static let font = "overlyric.font"
         static let easterEggs = "overlyric.easterEggs"
+        static let source = "overlyric.source"
     }
 
     var enabled: Bool {
@@ -99,6 +100,30 @@ final class Settings {
     var font: LyricsFont {
         get { LyricsFont(rawValue: d.string(forKey: Key.font) ?? "") ?? .defaultFont }
         set { d.set(newValue.rawValue, forKey: Key.font); notify() }
+    }
+
+    enum Source: String, CaseIterable {
+        case spotify, nowPlaying
+
+        var title: String {
+            switch self {
+            case .spotify: "Spotify"
+            case .nowPlaying: "YouTube Music & Others"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .spotify: "The Spotify desktop app"
+            case .nowPlaying: "Whatever is Now Playing: YouTube Music, browser tabs, Apple Music…"
+            }
+        }
+    }
+
+    /// Which player the lyrics follow.
+    var source: Source {
+        get { Source(rawValue: d.string(forKey: Key.source) ?? "") ?? .spotify }
+        set { d.set(newValue.rawValue, forKey: Key.source); notify() }
     }
 
     /// Small hidden delights (sparkle words, shake, on-repeat, encore). Toggle lives in the ⌥-menu.

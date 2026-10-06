@@ -1,6 +1,7 @@
 import Foundation
 
-public struct SpotifyTrack: Equatable, Sendable {
+/// A song (or ad / episode) from whichever player is being followed.
+public struct Track: Equatable, Sendable {
     public let id: String
     public let name: String
     public let artist: String
@@ -19,13 +20,13 @@ public struct SpotifyTrack: Equatable, Sendable {
 }
 
 public struct PlaybackSnapshot: Equatable, Sendable {
-    public var track: SpotifyTrack?
+    public var track: Track?
     public var isPlaying: Bool
-    /// Position reported by Spotify at `timestamp`, seconds.
+    /// Position reported by the player at `timestamp`, seconds.
     public var position: TimeInterval
     public var timestamp: Date
 
-    public init(track: SpotifyTrack?, isPlaying: Bool, position: TimeInterval, timestamp: Date) {
+    public init(track: Track?, isPlaying: Bool, position: TimeInterval, timestamp: Date) {
         self.track = track; self.isPlaying = isPlaying; self.position = position; self.timestamp = timestamp
     }
 
