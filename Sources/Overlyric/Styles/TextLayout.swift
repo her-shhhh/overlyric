@@ -140,6 +140,32 @@ final class TextLayout {
         return r.isNull ? 0 : r.minX
     }
 
+    /// How far the glyphs' ink reaches past `size` on each side (script swashes, slanted ascenders, lead-in
+    /// strokes), in whole points. Glyph boxes can be far too wide for complex scripts, so each side is
+    /// capped at the font size.
+    lazy var overhang: NSEdgeInsets = {
+        var ink = CGRect.null
+        var cap: CGFloat = 0
+        let glyphs = manager.glyphRange(for: container)
+        for g in glyphs.location..<NSMaxRange(glyphs) {
+            let c = manager.characterIndexForGlyph(at: g)
+            guard let font = storage.attribute(.font, at: c, effectiveRange: nil) as? NSFont else { continue }
+            cap = max(cap, font.pointSize)
+            var glyph = manager.cgGlyph(at: g)
+            var r = CGRect.zero
+            CTFontGetBoundingRectsForGlyphs(font as CTFont, .horizontal, &glyph, &r, 1)
+            guard !r.isNull, !r.isEmpty else { continue }
+            // TextKit coordinates (y down); the glyph location is its baseline origin within the fragment.
+            let x = glyphX(g), baseline = manager.lineFragmentRect(forGlyphAt: g, effectiveRange: nil).minY
+                + manager.location(forGlyphAt: g).y
+            ink = ink.union(CGRect(x: x + r.minX, y: baseline - r.maxY, width: r.width, height: r.height))
+        }
+        guard !ink.isNull else { return NSEdgeInsetsZero }
+        func side(_ v: CGFloat) -> CGFloat { min(cap, max(0, ceil(v))) }
+        return NSEdgeInsets(top: side(-ink.minY), left: side(-ink.minX),
+                            bottom: side(ink.maxY - size.height), right: side(ink.maxX - width))
+    }()
+
     /// Draws the text into a layer context (bottom-left origin) whose bounds are `size`.
     func draw(in ctx: CGContext, bounds: CGRect) {
         let glyphs = manager.glyphRange(for: container)
@@ -156,8 +182,53 @@ final class TextLayout {
     }
 }
 
-/// A Core Animation layer that draws a `TextLayout`. No implicit animations: only explicit ones move it.
+/// A Core Animation layer that shows a `TextLayout`. No implicit animations: only explicit ones move it.
+/// Its bounds are the typeset box; the glyphs are drawn by a sublayer that reaches past them by the
+/// layout's ink overhang, so swashes and slanted strokes are never cut off at the box's edge.
 final class TextLayer: CALayer {
+    var layout: TextLayout? {
+        didSet {
+            ink?.layout = layout
+            placeInk()
+        }
+    }
+
+    private var ink: InkLayer?
+
+    override var contentsScale: CGFloat {
+        didSet { ink?.contentsScale = contentsScale }
+    }
+
+    override init() {
+        super.init()
+        masksToBounds = false
+        isOpaque = false
+        let ink = InkLayer()
+        addSublayer(ink)
+        self.ink = ink
+    }
+
+    override init(layer: Any) {
+        super.init(layer: layer)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    override func action(forKey event: String) -> CAAction? { nil }
+
+    /// Glyphs sit at their layout coordinates in the layer's bounds space.
+    private func placeInk() {
+        guard let ink else { return }
+        guard let layout else { ink.frame = .zero; return }
+        let o = layout.overhang
+        ink.frame = CGRect(x: -o.left, y: -o.bottom, width: layout.size.width + o.left + o.right,
+                           height: layout.size.height + o.top + o.bottom)
+    }
+}
+
+/// The drawing surface of a `TextLayer`: the layout plus its overhang on every side.
+private final class InkLayer: CALayer {
     var layout: TextLayout? {
         didSet { setNeedsDisplay() }
     }
@@ -165,7 +236,6 @@ final class TextLayer: CALayer {
     override init() {
         super.init()
         needsDisplayOnBoundsChange = true
-        masksToBounds = false
         isOpaque = false
     }
 
@@ -178,10 +248,10 @@ final class TextLayer: CALayer {
 
     override func action(forKey event: String) -> CAAction? { nil }
 
-    /// Glyphs are drawn at their layout coordinates (a non-zero bounds origin crops, it never shifts).
     override func draw(in ctx: CGContext) {
         guard let layout else { return }
-        layout.draw(in: ctx, bounds: CGRect(origin: .zero, size: layout.size))
+        let o = layout.overhang
+        layout.draw(in: ctx, bounds: CGRect(origin: CGPoint(x: o.left, y: o.bottom), size: layout.size))
     }
 }
 
