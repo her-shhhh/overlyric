@@ -1,4 +1,16 @@
-# Overlyric — status (as of 2026-10-02, version 1.1.4)
+# Overlyric — status (as of 2026-10-06, version 1.1.5)
+
+## 1.1.5 (2026-10-06)
+- **Lyrics stay on every desktop.** After the app had been running for days, swiping to another desktop
+  (four-finger swipe) showed the lyrics for a moment and then they vanished. macOS had quietly dropped the
+  overlay from the other desktops while it still carried the "all Spaces" flag. `.stationary` held it
+  through the swipe, then it was gone. Ordering the window front doesn't fix that. Clearing
+  `collectionBehavior` and setting it again on the next run-loop turn does. The controller checks
+  `isOnActiveSpace` on every Space switch and every show and repairs it (logs "lyrics were missing from
+  this Space"). Diagnosed on the dev Mac with the window server's per-window Space list: the overlay was on
+  Desktop 1 only, while every other all-Spaces window was on both. The repair was verified on a test panel
+  pushed into the same state. It hasn't fired on a real drop yet. The trigger is unknown; display changes
+  are the main suspect.
 
 ## 1.1.4 (2026-10-02)
 - Fresh installs start in **Dynamic** style with **Yellow** lyrics (a new vivid preset); both are first in

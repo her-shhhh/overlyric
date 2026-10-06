@@ -100,6 +100,11 @@ detached tree completes them instantly.
 
 - `NSAppleScript` deadlocks off the main thread → ScriptingBridge on a serial queue.
 - `isFloatingPanel = true` resets `level`; set the level after it.
+- After days of running, macOS can drop a `.canJoinAllSpaces` window from some desktops (the flag stays,
+  the membership doesn't): the lyrics hold still for the swipe (`.stationary`), then vanish. `isVisible`
+  stays true and `orderFrontRegardless` doesn't help; `isOnActiveSpace` turns false, and clearing then
+  re-setting `collectionBehavior` on the next run-loop turn puts it back on every Space (only while on
+  screen) → checked on every Space switch and every show (`OverlayPanel.rejoinAllSpaces`).
 - `performDrag(with:)` does nothing for a never-key panel of an inactive app → manual tracking loop.
 - Trackpad pinch (magnify) events are never delivered to a background overlay (only to the active app;
   global monitors don't see them) → ⌘ + scroll and a menu slider instead.
