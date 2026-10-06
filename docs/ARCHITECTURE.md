@@ -55,9 +55,18 @@ monitor + tracking area), so the transparent padding is click-through. Click = o
 
 **Styles** (`Styles/`) — `StyleRenderer` protocol + `BaseRenderer` toolkit. A renderer's root layer has
 its origin at the top-centre of the text block (bounds origin trick), so resizing never shifts what is
-drawn. `TextLayout` wraps TextKit and reports geometry from typeset positions. Styles: Two Lines, One
-Line, Scrolling (teleprompter), Typewriter, Karaoke (sweep), Dynamic (billboard rows), Pop, Jump,
-Glide, Cube.
+drawn. `TextLayout` wraps TextKit and reports geometry from typeset positions. A `TextLayer`'s bounds are
+that typeset box, but its glyphs are drawn by a sublayer that reaches past it by the layout's measured ink
+overhang (`TextLayout.overhang`), so script swashes, slanted ascenders and Devanagari matras are never cut
+off at a word's edge. Styles: Two Lines, One Line, Scrolling (teleprompter), Typewriter, Karaoke (sweep),
+Dynamic (billboard rows), Pop, Jump, Glide, Cube.
+
+**Fonts** — `LyricsFont` (Rounded = SF Pro Rounded, Serif = New York, Poster = Futura Condensed, Script =
+Snell Roundhand), all shipped with macOS. `RenderContext.face` carries the choice into every style;
+`LyricsFont.font(_:_:)` maps the styles' weights onto what each family has and falls back to Rounded.
+Script's swashes reach up to 0.62 em past their box (`swashReach`); the window's side padding
+(`RenderContext.sidePadding`), Jump's word pieces and Karaoke's sweep add that reach, so nothing is cut
+off. Typewriter keeps its own typewriter face.
 
 **Colour** — Manual, **Auto** (`BackgroundSampler`: one-shot ScreenCaptureKit captures of the region behind
 the window, excluding it; median per-pixel luminance decides bright vs deep text with hysteresis; colours
@@ -89,8 +98,10 @@ hides behind the notch). Opening Overlyric while it already runs hands off to th
 
 ## QA harness
 
-`tools/style-harness/run.sh [out]` compiles the real renderers with a mini host and renders every style
-offscreen through CARenderer (no windows, no permissions): Latin advance, wrapping Hindi advance, into/out
+`tools/style-harness/run.sh [out]` compiles the real renderers with a mini host and renders every style in
+every font (one folder per font; `FACES=serif,script` limits them) offscreen through CARenderer (no
+windows, no permissions), checks each font resolves to its real face, and checks no lyric ink ever
+lands outside the window (with a stress song of Script's widest swashes): Latin advance, wrapping Hindi advance, into/out
 of an instrumental gap, progress through a line, and pause (asserts two paused frames are identical).
 Strips land in `/tmp/overlyric-style-frames` (one PNG per style × scenario). Rule learned the hard way:
 attach the layer tree to the CARenderer *before* triggering a transition — committing animations on a

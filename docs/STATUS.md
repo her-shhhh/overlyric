@@ -1,4 +1,17 @@
-# Overlyric — status (as of 2026-10-06, version 1.1.5)
+# Overlyric — status (as of 2026-10-06, version 1.2.0)
+
+## 1.2.0 (2026-10-06)
+- **Four fonts.** Menu › Lyrics Font: Rounded (default, unchanged), Serif (New York), Poster (Futura
+  Condensed ExtraBold) and Script (Snell Roundhand). All ship with macOS (nothing bundled). Each menu row
+  shows "Aa" in its font. Typewriter keeps its typewriter face (the font menu says so while it's on).
+- **Nothing gets cut off at a word's edge any more.** Word layers (Dynamic, Pop) used to crop glyphs to
+  their typeset box, which sliced script swashes and, slightly, the right edge of Devanagari ी loops in
+  Dynamic (present since 1.0). Text layers now draw a margin sized to the measured ink. Script also gets
+  wider window side padding, Jump pieces and Karaoke sweep for its swashes (the other fonts are unchanged).
+- Verified offscreen: all 10 styles × 4 fonts (harness, plus checks that each font resolves to its real
+  face and that no lyric ink lands outside the window, proven to fail without the Script padding); Rounded is pixel-identical to 1.1.5 except the restored Devanagari ink; pause still freezes in
+  all 40 combinations; 54 unit tests pass. The font menu itself was checked as an offscreen mock, not
+  opened on screen.
 
 ## 1.1.5 (2026-10-06)
 - **Lyrics stay on every desktop.** After the app had been running for days, swiping to another desktop
