@@ -71,7 +71,7 @@ func diff(_ a: Bitmap, _ b: Bitmap) -> (max: Int, mean: Double, over32: Int) {
         size = s
         let P = ctx.padding
         let shown = CGSize(width: max(s.width, minSize.width), height: max(s.height, minSize.height))
-        let win = CGSize(width: ceil(shown.width + 2 * P), height: ceil(shown.height + 2 * P))
+        let win = CGSize(width: ceil(shown.width + 2 * ctx.sidePadding), height: ceil(shown.height + 2 * P))
         CATransaction.begin(); CATransaction.setDisableActions(true)
         root.bounds = CGRect(origin: .zero, size: win)
         r.layer.position = CGPoint(x: win.width / 2, y: win.height - P)

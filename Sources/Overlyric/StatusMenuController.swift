@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 
-/// The menu-bar item (top-right): on/off, what's playing, style, colour, size, lock, position, login, quit.
+/// The menu-bar item (top-right): on/off, what's playing, style, font, colour, size, lock, position, login, quit.
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
@@ -13,6 +13,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let statusTitleItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let statusDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let styleMenu = NSMenu(title: "Lyrics Style")
+    private let fontMenu = NSMenu(title: "Lyrics Font")
+    /// Shown in the font menu only while the Typewriter style (which keeps its own face) is on.
+    private let typewriterNote = NSMenuItem(title: "Typewriter style keeps its own keys", action: nil, keyEquivalent: "")
     private let colorMenu = NSMenu(title: "Lyrics Colour")
     private let autoItem = NSMenuItem(title: "Auto", action: #selector(toggleAuto), keyEquivalent: "")
     private let autoStatusItem = NSMenuItem(title: "", action: #selector(autoStatusClicked), keyEquivalent: "")
@@ -66,6 +69,19 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             styleMenu.addItem(it)
         }
         menu.addItem(Self.submenuItem(styleMenu))
+
+        fontMenu.autoenablesItems = false
+        for (i, face) in LyricsFont.allCases.enumerated() {
+            let it = NSMenuItem(title: face.title, action: #selector(pickFont(_:)), keyEquivalent: "")
+            it.target = self
+            it.tag = i
+            Self.setTitle(it, face.title, subtitle: face.subtitle)
+            it.image = Self.fontSample(face)
+            fontMenu.addItem(it)
+        }
+        typewriterNote.isEnabled = false
+        fontMenu.addItem(typewriterNote)
+        menu.addItem(Self.submenuItem(fontMenu))
 
         colorMenu.autoenablesItems = false
         autoItem.target = self
@@ -157,6 +173,19 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// "Aa" in the font, as a template image (the menu tints it for light, dark and highlighted rows).
+    private static func fontSample(_ face: LyricsFont) -> NSImage {
+        let text = NSAttributedString(string: "Aa", attributes: [.font: face.font(15, .heavy), .foregroundColor: NSColor.black])
+        let size = NSSize(width: 26, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let ink = text.size()
+            text.draw(at: NSPoint(x: (rect.width - ink.width) / 2, y: (rect.height - ink.height) / 2))
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
     /// A live slider inside the Text Size submenu: drag for fine control, the overlay follows instantly.
     private func makeSliderItem() -> NSMenuItem {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 262, height: 34))
@@ -206,6 +235,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         let style = settings.style
         for it in styleMenu.items { it.state = LyricsStyle.allCases[it.tag] == style ? .on : .off }
+        let face = settings.font
+        for it in fontMenu.items where it !== typewriterNote { it.state = LyricsFont.allCases[it.tag] == face ? .on : .off }
+        typewriterNote.isHidden = style != .typewriter
         eggsItem.state = settings.easterEggs ? .on : .off
         sizeSlider.doubleValue = Double(settings.fontSize)
         sizeValueLabel.stringValue = "\(Int(settings.fontSize.rounded())) pt"
@@ -280,6 +312,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func pickStyle(_ sender: NSMenuItem) {
         settings.style = LyricsStyle.allCases[sender.tag]
+    }
+
+    @objc private func pickFont(_ sender: NSMenuItem) {
+        settings.font = LyricsFont.allCases[sender.tag]
     }
 
     @objc private func toggleAuto() {

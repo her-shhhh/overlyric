@@ -11,6 +11,10 @@ final class OverlayView: NSView {
         didSet { if fontSize != oldValue { render(advancing: false) } }
     }
 
+    var face: LyricsFont = .defaultFont {
+        didSet { if face != oldValue { render(advancing: false) } }
+    }
+
     private(set) var color: NSColor = .white {
         didSet { if color != oldValue { renderer.recolor(context: context) } }
     }
@@ -152,7 +156,8 @@ final class OverlayView: NSView {
         let wrap = min(max(fontSize * 16, 320), maxW)
         return RenderContext(fontSize: fontSize, color: color,
                              wrapWidth: 2 * floor(wrap / 2),     // even: a centred line's edges land on whole points
-                             scale: window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
+                             scale: window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2,
+                             face: face)
     }
 
     // MARK: Content
@@ -241,7 +246,7 @@ final class OverlayView: NSView {
     /// out and the room asked for above them.
     func relayout() {
         guard let panel = window as? OverlayPanel else { return }
-        let P = context.padding
+        let P = context.padding, SP = context.sidePadding
         let words = restingWords(panel, padding: P)
         wordsFrame = words
         let top = NSPoint(x: words.midX, y: words.maxY)
@@ -253,8 +258,8 @@ final class OverlayView: NSView {
         }
         var frame = NSRect.null
         for t in tops {
-            frame = frame.union(NSRect(x: t.x - extent.width / 2 - P, y: t.y - extent.height - P,
-                                       width: extent.width + 2 * P, height: extent.height + 2 * P))
+            frame = frame.union(NSRect(x: t.x - extent.width / 2 - SP, y: t.y - extent.height - P,
+                                       width: extent.width + 2 * SP, height: extent.height + 2 * P))
             if accessorySize != .zero { frame = frame.union(accessoryRect(at: t)) }
         }
         frame = NSRect(x: floor(frame.minX), y: floor(frame.minY),

@@ -52,6 +52,7 @@ final class LyricsController {
 
     func start() {
         view.fontSize = settings.fontSize
+        view.face = settings.font
         view.style = settings.style
         view.onResizeEnded = { [weak self] size in self?.settings.fontSize = size }
         view.onClick = { [weak self] in
@@ -107,6 +108,7 @@ final class LyricsController {
 
     private func applySettings() {
         if view.fontSize != settings.fontSize { view.fontSize = settings.fontSize }
+        if view.face != settings.font { view.face = settings.font }
         if view.style != settings.style { view.style = settings.style }
         eggs.enabled = settings.easterEggs
         view.locked = settings.clickThrough

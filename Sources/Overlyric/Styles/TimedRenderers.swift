@@ -98,8 +98,10 @@ import OverlyricCore
     private var ranges: [ClosedRange<Int>?] = []    // global character indices of each visual line
     private var blank: [Bool] = []                  // per character (characterStops order): whitespace
 
-    /// `slack` = room around each visual line for ink that overhangs it.
-    init(layout: TextLayout, style: Style, slack: CGFloat) {
+    /// `slack` = room above and below each visual line for ink that overhangs it; `reach` = the same at its
+    /// ends (script swashes reach further sideways), at least `slack`.
+    init(layout: TextLayout, style: Style, slack: CGFloat, reach: CGFloat = 0) {
+        let reach = max(slack, reach)
         self.layout = layout
         let feather: CGFloat
         switch style {
@@ -119,13 +121,13 @@ import OverlyricCore
         let stops = layout.characterStops
         let last = layout.fragments.count - 1
         for (j, f) in layout.fragments.enumerated() {
-            let width = f.rect.width + 2 * slack
+            let width = f.rect.width + 2 * reach
             // Up into the line above (already uncovered by then), but down only below the last line: never
             // into the next one, which is still to come.
             let top = f.rect.maxY + slack, bottom = f.rect.minY - (j == last ? slack : 0)
             let clip = QuietLayer()
             clip.masksToBounds = true
-            clip.frame = CGRect(x: f.rect.minX - slack, y: bottom, width: width, height: top - bottom)
+            clip.frame = CGRect(x: f.rect.minX - reach, y: bottom, width: width, height: top - bottom)
             let bar: CALayer
             if feather > 0 {
                 let g = CAGradientLayer()
@@ -145,7 +147,7 @@ import OverlyricCore
             clip.addSublayer(bar)
             mask.addSublayer(clip)
             bars.append(bar)
-            left.append(f.rect.minX - slack)
+            left.append(f.rect.minX - reach)
             travel.append(width + feather)
             let idx = stops.indices.filter { stops[$0].fragment == j }
             ranges.append(idx.isEmpty ? nil : idx[0]...idx[idx.count - 1])
@@ -228,6 +230,13 @@ import OverlyricCore
     private var lineIndex: Int?
     let transitionDuration: TimeInterval = 0.32
 
+    /// The ♪ of an instrumental gap, always in the default face: Typewriter doesn't follow the font menu.
+    private static func gapMark(_ c: RenderContext) -> TextLayout {
+        var c = c
+        c.face = .defaultFont
+        return c.layout("♪")
+    }
+
     func show(_ content: StyleContent, advancing: Bool, context ctx: RenderContext) -> CGSize {
         let leaving = advancing ? group : nil
         let leavingTexts = [text].compactMap { $0 }
@@ -249,7 +258,7 @@ import OverlyricCore
         var timed: (LyricsState, Int)?
         let layoutText: (RenderContext) -> TextLayout
         switch content {
-        case .empty: layoutText = { $0.layout("♪") }
+        case .empty: layoutText = Self.gapMark
         case .note(let s): layoutText = { $0.noteLayout(s) }
         case .lyrics(let st):
             let raw = st.text(st.index)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -262,7 +271,7 @@ import OverlyricCore
                     return TextLayout(s, width: c.wrapWidth)
                 }
             } else {
-                layoutText = { $0.layout("♪") }
+                layoutText = Self.gapMark
             }
         }
         let t = makeTextLayer(ctx, layoutText)
@@ -397,7 +406,8 @@ import OverlyricCore
             b.anchorPoint = CGPoint(x: 0.5, y: 1)
             b.position = .zero
             w.addSublayer(b)
-            let m = RevealMask(layout: b.layout!, style: .sweep(feather: ctx.fontSize * 0.35), slack: ctx.fontSize * 0.2)
+            let m = RevealMask(layout: b.layout!, style: .sweep(feather: ctx.fontSize * 0.35), slack: ctx.fontSize * 0.2,
+                               reach: ctx.reach(0.2))
             b.mask = m.mask
             lit = w; bright = b; sweep = m
             applyTiming(st)
@@ -609,7 +619,7 @@ import OverlyricCore
             let weight: NSFont.Weight = r % 2 == 0 ? .heavy : .bold
             // Natural width at the base size decides how much this row is scaled up or down.
             let natural = ctx.attributed(row.joined(separator: " "), size: S, weight: weight).size().width
-            let size = min(S * 1.9, max(S * 0.75, S * target / max(1, natural)))
+            let size = min(S * RenderContext.maxTextScale, max(S * 0.75, S * target / max(1, natural)))
             let space = ctx.attributed(" ", size: size, weight: weight).size().width
             var layers: [(TextLayer, CGFloat)] = []
             var rowWidth: CGFloat = 0
@@ -656,7 +666,7 @@ import OverlyricCore
             let start = max(st.clock.hostTime(of: words[k].at), enterAt)
             guard start + Self.popDuration > now else { continue }     // already sung
             let pop = CAKeyframeAnimation(keyPath: "transform.scale")
-            pop.values = [0.4, 1.12, 1.0]
+            pop.values = [0.4, RenderContext.wordOvershoot, 1.0]
             pop.keyTimes = [0, 0.6, 1]
             let fade = CAKeyframeAnimation(keyPath: "opacity")
             fade.values = [0, 1, 1]
@@ -815,8 +825,8 @@ import OverlyricCore
         }
         let size = CGSize(width: width, height: visibleHeight)
         setBlockSize(size)
-        // Wide enough for the side padding too, so the widest line's glyph shadow is not cut off.
-        fade.frame = root.bounds.insetBy(dx: -ctx.padding, dy: 0)
+        // Wide enough for the side padding too, so the widest line's glyph shadow and swashes are not cut off.
+        fade.frame = root.bounds.insetBy(dx: -ctx.sidePadding, dy: 0)
         let f = Double(fadeLength / visibleHeight)
         let steps = Self.ramp.indices.map { f * Double($0) / Double(Self.ramp.count - 1) }
         fade.locations = (steps + steps.reversed().map { 1 - $0 }).map { NSNumber(value: $0) }

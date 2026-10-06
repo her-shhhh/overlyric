@@ -55,6 +55,84 @@ enum LyricsStyle: String, CaseIterable {
     }
 }
 
+/// The typefaces offered in the menu. All ship with macOS, so nothing is bundled. The Typewriter style
+/// always types in its own typewriter face.
+enum LyricsFont: String, CaseIterable {
+    // Menu order; the first case is the default font.
+    case rounded, serif, poster, script
+
+    static let defaultFont: LyricsFont = .rounded
+
+    var title: String {
+        switch self {
+        case .rounded: return "Rounded"
+        case .serif: return "Serif"
+        case .poster: return "Poster"
+        case .script: return "Script"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .rounded: return "Soft and friendly, the original"
+        case .serif: return "Elegant, like a book cover"
+        case .poster: return "Tall and loud, like a gig poster"
+        case .script: return "Handwritten, like a love letter"
+        }
+    }
+
+    /// How far (fraction of the font size) this face's swashes reach past the typeset box, beyond the slight
+    /// overhang every margin already allows for. Snell Roundhand's f and j hooks reach back 0.62, its K and
+    /// I tails 0.42; Rounded, Serif and Poster stay within 0.06.
+    var swashReach: CGFloat {
+        switch self {
+        case .rounded, .serif, .poster: return 0
+        case .script: return 0.62
+        }
+    }
+
+    /// Letter spacing as a fraction of the font size (negative = tighter).
+    var tracking: CGFloat {
+        switch self {
+        case .rounded: return -0.015
+        case .serif: return -0.01
+        case .poster, .script: return 0
+        }
+    }
+
+    /// This face at `size`, as close to `weight` as the family goes. Falls back to the rounded face.
+    func font(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        switch self {
+        case .rounded:
+            return Self.system(.rounded, size, weight)
+        case .serif:
+            return Self.system(.serif, size, weight)
+        case .poster:
+            // Futura's condensed cut only comes in Medium and ExtraBold.
+            let bold = weight.rawValue >= NSFont.Weight.semibold.rawValue
+            let names = bold ? ["Futura-CondensedExtraBold", "AvenirNextCondensed-Heavy"]
+                             : ["Futura-CondensedMedium", "AvenirNextCondensed-Medium"]
+            return Self.named(names, size) ?? Self.system(.rounded, size, weight)
+        case .script:
+            // The regular cut is too thin to read over a busy screen; Bold is the lightest used.
+            let heavy = weight.rawValue >= NSFont.Weight.heavy.rawValue
+            let names = heavy ? ["SnellRoundhand-Black", "SnellRoundhand-Bold"] : ["SnellRoundhand-Bold"]
+            return Self.named(names, size) ?? Self.system(.rounded, size, weight)
+        }
+    }
+
+    private static func system(_ design: NSFontDescriptor.SystemDesign, _ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        let base = NSFont.systemFont(ofSize: size, weight: weight)
+        if let d = base.fontDescriptor.withDesign(design), let f = NSFont(descriptor: d, size: size) { return f }
+        return base
+    }
+
+    private static func named(_ names: [String], _ size: CGFloat) -> NSFont? {
+        for name in names { if let f = NSFont(name: name, size: size) { return f } }
+        return nil
+    }
+}
+
 /// Maps Spotify playback time to Core Animation host time (CACurrentMediaTime).
 struct PlaybackClock: Equatable {
     var position: TimeInterval        // playback position at `hostTime`
@@ -111,6 +189,7 @@ struct RenderContext {
     var color: NSColor
     var wrapWidth: CGFloat
     var scale: CGFloat
+    var face: LyricsFont = .defaultFont
 
     static let nextScale: CGFloat = 0.86
     static let dimAlpha: Float = 0.55
@@ -123,9 +202,7 @@ struct RenderContext {
             for name in Self.typewriterFontNames { if let f = NSFont(name: name, size: size) { return f } }
             return NSFont.monospacedSystemFont(ofSize: size, weight: .bold)
         }
-        let base = NSFont.systemFont(ofSize: size, weight: weight)
-        if let d = base.fontDescriptor.withDesign(.rounded), let f = NSFont(descriptor: d, size: size) { return f }
-        return base
+        return face.font(size, weight)
     }
 
     func attributed(_ text: String, size: CGFloat? = nil, weight: NSFont.Weight = .heavy, alpha: CGFloat = 1,
@@ -139,7 +216,7 @@ struct RenderContext {
             .font: font(S, weight, typewriter: typewriter),
             .foregroundColor: alpha >= 1 ? color : color.withAlphaComponent(alpha),
             .paragraphStyle: para,
-            .kern: typewriter ? 0 : -S * 0.015,
+            .kern: typewriter ? 0 : S * face.tracking,
         ])
     }
 
@@ -167,6 +244,15 @@ struct RenderContext {
     var shadowOffset: CGSize { CGSize(width: 0, height: -max(1, fontSize / 28)) }
     /// Room around the text for the shadow and for lines animating in and out.
     var padding: CGFloat { max(20, 2 * shadowRadius + abs(shadowOffset.height) + 2, ceil(fontSize * 0.7)) }
+    /// Room beside the text: `padding`, plus the face's swash reach at the largest a style ever draws it
+    /// (Dynamic's biggest rows mid-pop; Pop peaks at 1.6 × 1.25).
+    var sidePadding: CGFloat { padding + ceil(fontSize * Self.maxTextScale * Self.wordOvershoot * face.swashReach) }
+    /// Dynamic's largest rows, as a multiple of the font size.
+    static let maxTextScale: CGFloat = 1.9
+    /// How far past full size Dynamic's words pop.
+    static let wordOvershoot: CGFloat = 1.12
+    /// A margin of `base` × the font size around text for overhanging ink, plus the face's swash reach.
+    func reach(_ base: CGFloat) -> CGFloat { fontSize * (base + face.swashReach) }
 
     func applyShadow(to layer: CALayer) {
         layer.shadowColor = shadowColor

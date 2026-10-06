@@ -132,7 +132,7 @@ import OverlyricCore
     /// Wide enough for the widest flash and, up to the wrap width, for it at the start of its pop
     /// (scaled up) to stay inside the window's padding.
     private func blockWidth(ink: CGFloat, context ctx: RenderContext) -> CGFloat {
-        max(24, ink, min(ceil(Self.popScale * ink - 2 * ctx.padding), ctx.wrapWidth))
+        max(24, ink, min(ceil(Self.popScale * ink - 2 * ctx.sidePadding), ctx.wrapWidth))
     }
 
     /// Groups the words into flashes: a word of ≤ 3 letters goes with the word after it (unless it ends

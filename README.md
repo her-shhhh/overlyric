@@ -21,6 +21,7 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
 
 - **On top of everything**, on every Space and over full-screen apps.
 - **Ten lyric styles** — the Instagram ones and a few of our own (below).
+- **Four fonts** — Rounded, Serif, Poster and Script.
 - **Colours your way** — pick one, let it pick vivid readable colours from what's behind it, or match
   the album artwork.
 - **Drag** the lyrics anywhere (right up to the screen edges), **⌘ + scroll** on them to resize,
@@ -73,6 +74,7 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 | **Show Lyrics** | Turns the overlay on or off (the icon dims when off). |
 | status lines | What's playing and whether synced lyrics were found. |
 | **Lyrics Style ▸** | Ten styles (below). |
+| **Lyrics Font ▸** | **Rounded** *(default)*, **Serif**, **Poster** or **Script** (below). |
 | **Lyrics Colour ▸** | **Auto** (colourful, always readable on what's behind), **Match album artwork**, 8 presets, or **Custom…** |
 | **Text Size ▸** | A live slider (14–160 pt), Bigger / Smaller / Reset. Or hold **⌘** and scroll on the lyrics. |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through to what's underneath. |
@@ -94,6 +96,18 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 | **Pop** | One word at a time, flashing on as it's sung. |
 | **Glide** | Lyrics glide right to left like a ticker. |
 | **Cube** | Lines roll over like the faces of a cube. |
+
+### Fonts
+
+| Font | What it looks like |
+|---|---|
+| **Rounded** *(default)* | Soft and friendly (SF Pro Rounded), the original look. |
+| **Serif** | Elegant, like a book cover (New York). |
+| **Poster** | Tall and loud, like a gig poster (Futura Condensed). |
+| **Script** | Handwritten, like a love letter (Snell Roundhand). |
+
+All four come with macOS, so nothing extra is downloaded. Every style uses the font you pick, except
+Typewriter, which always types in its own typewriter face.
 
 ### Colours
 

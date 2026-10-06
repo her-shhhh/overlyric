@@ -43,6 +43,7 @@ final class Settings {
         static let hasTop = "overlyric.hasTop"
         static let colorMode = "overlyric.colorMode"
         static let style = "overlyric.style"
+        static let font = "overlyric.font"
         static let easterEggs = "overlyric.easterEggs"
     }
 
@@ -92,6 +93,12 @@ final class Settings {
     var style: LyricsStyle {
         get { LyricsStyle(rawValue: d.string(forKey: Key.style) ?? "") ?? .defaultStyle }
         set { d.set(newValue.rawValue, forKey: Key.style); notify() }
+    }
+
+    /// The typeface of the lyrics.
+    var font: LyricsFont {
+        get { LyricsFont(rawValue: d.string(forKey: Key.font) ?? "") ?? .defaultFont }
+        set { d.set(newValue.rawValue, forKey: Key.font); notify() }
     }
 
     /// Small hidden delights (sparkle words, shake, on-repeat, encore). Toggle lives in the ⌥-menu.

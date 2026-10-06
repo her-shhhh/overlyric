@@ -108,7 +108,7 @@ import OverlyricCore
         let W = full.width, H = full.size.height
         // Room for glyphs that overhang their typeset extent (only the word's own glyphs are drawn, so its
         // neighbours never show in it).
-        let pad = ceil(ctx.fontSize * 0.3)
+        let pad = ceil(ctx.reach(0.3))
         // Bitmaps on the plain line's device-pixel grid, so a word at rest is rasterized exactly like it.
         let px = 1 / max(1, ctx.scale)
         let words = full.words

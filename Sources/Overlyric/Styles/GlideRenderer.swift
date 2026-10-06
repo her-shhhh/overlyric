@@ -74,7 +74,7 @@ import OverlyricCore
         note?.isHidden = true
         viewport.isHidden = false
         let lines = st.lyrics.lines
-        let key = "\(st.id)|\(ctx.fontSize)|\(ctx.scale)|\(lines.count)|\(lines[0].time)|\(lines[lines.count - 1].time)"
+        let key = "\(st.id)|\(ctx.fontSize)|\(ctx.face)|\(ctx.scale)|\(lines.count)|\(lines[0].time)|\(lines[lines.count - 1].time)"
         if key != tapeKey {
             buildTape(st, ctx)
             tapeKey = key
