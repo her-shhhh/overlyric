@@ -1,4 +1,15 @@
-# Overlyric — status (as of 2026-10-06, version 1.2.0)
+# Overlyric — status (as of 2026-10-07, version 1.3.0)
+
+## 1.3.0 (2026-10-07)
+- **Hover to try.** In Lyrics Style and Lyrics Font, hovering an item (or arrowing to it) puts it on the
+  lyrics at once; clicking keeps it, leaving without a click puts the saved one back. Nothing is saved
+  until the click. A preview waits 80 ms of resting on an item (sweeping the list doesn't rebuild every
+  style); the revert waits 150 ms after the menu closes, so a click's pick lands first and nothing flickers.
+- **Fix:** Scrolling Lyrics kept the old font's layout after a font change (its layout cache ignored the
+  font; present since 1.2.0).
+- Verified offscreen: every style → every other style mid-transition (90) and every font → every other
+  font in every style (120) render exactly like a fresh renderer; all earlier harness checks; 54 unit
+  tests. The hover itself (AppKit menu highlighting) can only be checked on screen.
 
 ## 1.2.0 (2026-10-06)
 - **Four fonts.** Menu › Lyrics Font: Rounded (default, unchanged), Serif (New York), Poster (Futura

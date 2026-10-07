@@ -25,6 +25,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let sizeSlider = NSSlider(value: Double(Settings.defaultFontSize), minValue: Double(Settings.minFontSize),
                                       maxValue: Double(Settings.maxFontSize), target: nil, action: nil)
     private let sizeValueLabel = NSTextField(labelWithString: "")
+    /// Each menu's pending preview change (its own, so closing one never cancels the other's revert).
+    /// Applied once the pointer rests on an item, so sweeping down the list doesn't rebuild the lyrics
+    /// for every style it passes.
+    private var previewWork: [ObjectIdentifier: DispatchWorkItem] = [:]
     private let lockItem = NSMenuItem(title: "Lock Position (click-through)", action: #selector(toggleLock), keyEquivalent: "")
     private let launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     /// A little secret: holding ⌥ turns "Launch at Login" into this switch.
@@ -61,6 +65,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         styleMenu.autoenablesItems = false
+        styleMenu.delegate = self
         for (i, style) in LyricsStyle.allCases.enumerated() {
             let it = NSMenuItem(title: style.title, action: #selector(pickStyle(_:)), keyEquivalent: "")
             it.target = self
@@ -71,6 +76,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(Self.submenuItem(styleMenu))
 
         fontMenu.autoenablesItems = false
+        fontMenu.delegate = self
         for (i, face) in LyricsFont.allCases.enumerated() {
             let it = NSMenuItem(title: face.title, action: #selector(pickFont(_:)), keyEquivalent: "")
             it.target = self
@@ -233,6 +239,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     // MARK: NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === self.menu else { return }      // the Style and Font menus only preview
         let style = settings.style
         for it in styleMenu.items { it.state = LyricsStyle.allCases[it.tag] == style ? .on : .off }
         let face = settings.font
@@ -266,6 +273,36 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         }
         customItem.state = mode == .manual && !matchedPreset ? .on : .off
         updateAutoStatus(auto: mode == .autoContrast)
+    }
+
+    /// Hovering a style or font tries it on the lyrics; clicking keeps it (the pick saves it as before).
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        if menu === styleMenu {
+            let style = item.map { LyricsStyle.allCases[$0.tag] }
+            schedule(menu, after: 0.08) { $0.preview(style: style) }
+        } else if menu === fontMenu {
+            let face = item.flatMap { $0 === typewriterNote ? nil : LyricsFont.allCases[$0.tag] }
+            schedule(menu, after: 0.08) { $0.preview(font: face) }
+        }
+    }
+
+    /// Leaving without a pick puts the saved look back. A click's action arrives just after the menu
+    /// closes, so the preview is dropped a moment later: by then the pick is saved and nothing flickers.
+    /// Closing the whole menu does the same for both, in case a submenu wasn't told it closed.
+    func menuDidClose(_ menu: NSMenu) {
+        if menu === styleMenu || menu === self.menu { schedule(styleMenu, after: 0.15) { $0.preview(style: nil) } }
+        if menu === fontMenu || menu === self.menu { schedule(fontMenu, after: 0.15) { $0.preview(font: nil) } }
+    }
+
+    private func schedule(_ menu: NSMenu, after delay: TimeInterval, _ apply: @escaping (LyricsController) -> Void) {
+        let key = ObjectIdentifier(menu)
+        previewWork[key]?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let controller = self?.controller else { return }
+            apply(controller)
+        }
+        previewWork[key] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// The line under Auto: what it is doing, or the one click that gets Screen Recording working.

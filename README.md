@@ -73,8 +73,8 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 |---|---|
 | **Show Lyrics** | Turns the overlay on or off (the icon dims when off). |
 | status lines | What's playing and whether synced lyrics were found. |
-| **Lyrics Style ▸** | Ten styles (below). |
-| **Lyrics Font ▸** | **Rounded** *(default)*, **Serif**, **Poster** or **Script** (below). |
+| **Lyrics Style ▸** | Ten styles (below). Hover one to try it on the lyrics; click to keep it. |
+| **Lyrics Font ▸** | **Rounded** *(default)*, **Serif**, **Poster** or **Script** (below). Hover to try, click to keep. |
 | **Lyrics Colour ▸** | **Auto** (colourful, always readable on what's behind), **Match album artwork**, 8 presets, or **Custom…** |
 | **Text Size ▸** | A live slider (14–160 pt), Bigger / Smaller / Reset. Or hold **⌘** and scroll on the lyrics. |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through to what's underneath. |

@@ -72,6 +72,8 @@ USE IT
   song.
 - Lyrics Font: Rounded, Serif, Poster or Script. Script for the love
   songs, Poster for the ones you scream in the car.
+- Can't decide? Hover over a style or font in the menu and the
+  lyrics try it on right away. Click to keep it, move away to undo.
 - Lyrics Colour: pick one, or Auto (a fresh colour you can read on
   whatever is behind the lyrics; needs one more permission, see
   below), or Match album artwork.

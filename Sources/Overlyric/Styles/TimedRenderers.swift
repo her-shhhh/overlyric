@@ -765,7 +765,7 @@ import OverlyricCore
         column.isHidden = false
         let S = ctx.fontSize, W = ctx.wrapWidth
         // Measure every line once per song / size (layouts are cheap; bitmaps are made lazily below).
-        let key = "\(st.id)|\(S)|\(W)|\(ctx.scale)|\(st.lyrics.lines.count)"
+        let key = "\(st.id)|\(S)|\(ctx.face)|\(W)|\(ctx.scale)|\(st.lyrics.lines.count)"
         if key != cacheKey {
             for (_, l) in lineLayers { forget(l) }
             lineLayers.removeAll()

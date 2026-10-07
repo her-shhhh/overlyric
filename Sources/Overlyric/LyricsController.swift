@@ -106,10 +106,30 @@ final class LyricsController {
 
     // MARK: Settings
 
+    /// A style or font being tried out from the menu (hovered, not picked yet; never saved). Nil = the saved one.
+    private var previewStyle: LyricsStyle?
+    private var previewFont: LyricsFont?
+
+    func preview(style: LyricsStyle?) {
+        previewStyle = style
+        applyLook()
+    }
+
+    func preview(font: LyricsFont?) {
+        previewFont = font
+        applyLook()
+    }
+
+    /// The style and font on screen: the one being tried out, else the saved one.
+    private func applyLook() {
+        let face = previewFont ?? settings.font, style = previewStyle ?? settings.style
+        if view.face != face { view.face = face }
+        if view.style != style { view.style = style }
+    }
+
     private func applySettings() {
         if view.fontSize != settings.fontSize { view.fontSize = settings.fontSize }
-        if view.face != settings.font { view.face = settings.font }
-        if view.style != settings.style { view.style = settings.style }
+        applyLook()
         eggs.enabled = settings.easterEggs
         view.locked = settings.clickThrough
         monitor.setActive(settings.enabled)

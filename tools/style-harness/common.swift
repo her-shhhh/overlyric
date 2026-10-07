@@ -59,7 +59,7 @@ func diff(_ a: Bitmap, _ b: Bitmap) -> (max: Int, mean: Double, over32: Int) {
 
 @MainActor final class Host {
     let root = QuietLayer()
-    let r: StyleRenderer
+    var r: StyleRenderer
     var size = CGSize.zero
     init(_ r: StyleRenderer) {
         self.r = r
@@ -77,6 +77,13 @@ func diff(_ a: Bitmap, _ b: Bitmap) -> (max: Int, mean: Double, over32: Int) {
         r.layer.position = CGPoint(x: win.width / 2, y: win.height - P)
         CATransaction.commit()
         return s
+    }
+    /// What the overlay does on a style change (or a hover preview): drop the renderer, mount another.
+    func swap(to next: StyleRenderer) {
+        r.teardown()
+        r.layer.removeFromSuperlayer()
+        r = next
+        root.insertSublayer(next.layer, at: 0)
     }
 }
 

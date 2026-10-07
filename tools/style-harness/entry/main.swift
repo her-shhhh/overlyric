@@ -91,6 +91,53 @@ let reachLyrics = SyncedLyrics(lines: [
     return worst
 }
 
+/// Hover previews switch style and font at any moment, mid-transition included. After a switch, the frame
+/// must be exactly what a fresh renderer draws: nothing left behind, nothing stale.
+@MainActor func switchesLeaveNothingBehind() {
+    let w = Int(canvas.width * scale), h = Int(canvas.height * scale)
+    let paused = { content(1, 5.0, playing: false) }
+    func fresh(_ style: LyricsStyle, _ f: LyricsFont) -> Bitmap {
+        face = f
+        let host = Host(style.makeRenderer())
+        let off = Offscreen(host.root, width: w, height: h, scale: scale)
+        _ = host.show(paused(), advancing: false, ctx())
+        return off.frame(at: CACurrentMediaTime() + 0.5, path: nil)
+    }
+    var bad: [String] = []
+    for a in LyricsStyle.allCases {
+        for b in LyricsStyle.allCases where b != a {
+            face = .defaultFont
+            let host = Host(a.makeRenderer())
+            let off = Offscreen(host.root, width: w, height: h, scale: scale)
+            _ = host.show(content(0, 3.9), advancing: false, ctx())
+            _ = host.show(content(1, 4.0), advancing: true, ctx())      // A mid-transition…
+            CATransaction.flush()
+            _ = off.frame(at: CACurrentMediaTime() + 0.1, path: nil)
+            host.swap(to: b.makeRenderer())                               // …hovered to B
+            _ = host.show(paused(), advancing: false, ctx())
+            let got = off.frame(at: CACurrentMediaTime() + 0.5, path: nil)
+            if diff(got, fresh(b, .defaultFont)).over32 > 0 { bad.append("\(a.rawValue)→\(b.rawValue)") }
+        }
+        for f1 in LyricsFont.allCases {
+            for f2 in LyricsFont.allCases where f2 != f1 {
+                face = f1
+                let host = Host(a.makeRenderer())
+                let off = Offscreen(host.root, width: w, height: h, scale: scale)
+                _ = host.show(content(0, 3.9), advancing: false, ctx())
+                _ = host.show(content(1, 4.0), advancing: true, ctx())
+                CATransaction.flush()
+                _ = off.frame(at: CACurrentMediaTime() + 0.1, path: nil)
+                face = f2                                                 // same style, font hovered
+                _ = host.show(paused(), advancing: false, ctx())
+                let got = off.frame(at: CACurrentMediaTime() + 0.5, path: nil)
+                if diff(got, fresh(a, f2)).over32 > 0 { bad.append("\(a.rawValue):\(f1.rawValue)→\(f2.rawValue)") }
+            }
+        }
+    }
+    face = .defaultFont
+    check(bad.isEmpty, "style and font switches mid-transition match a fresh render (\(bad.count) mismatches: \(bad.prefix(8).joined(separator: ", ")))")
+}
+
 @MainActor func run() {
     let wanted = ProcessInfo.processInfo.environment["FACES"]?.split(separator: ",").map(String.init)
     for f in LyricsFont.allCases where wanted?.contains(f.rawValue) ?? true {
@@ -118,6 +165,7 @@ let reachLyrics = SyncedLyrics(lines: [
             check(n == 0, "\(f.rawValue)/\(style.rawValue): no lyric ink outside the window (worst frame: \(n) px)")
         }
     }
+    if ProcessInfo.processInfo.environment["FACES"] == nil { switchesLeaveNothingBehind() }
     print(failures == 0 ? "all checks passed" : "\(failures) check(s) FAILED")
 }
 

@@ -103,7 +103,8 @@ every font (one folder per font; `FACES=serif,script` limits them) offscreen thr
 windows, no permissions), checks each font resolves to its real face, and checks no lyric ink ever
 lands outside the window (with a stress song of Script's widest swashes): Latin advance, wrapping Hindi advance, into/out
 of an instrumental gap, progress through a line, and pause (asserts two paused frames are identical).
-Strips land in `/tmp/overlyric-style-frames` (one PNG per style × scenario). Rule learned the hard way:
+It also switches every style to every other style, and every font to every other font, mid-transition
+(what hovering the menu does) and asserts the result is pixel-identical to a fresh render. Strips land in `/tmp/overlyric-style-frames` (one PNG per style × scenario). Rule learned the hard way:
 attach the layer tree to the CARenderer *before* triggering a transition — committing animations on a
 detached tree completes them instantly.
 
