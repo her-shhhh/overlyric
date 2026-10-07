@@ -90,6 +90,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(Self.submenuItem(fontMenu))
 
         colorMenu.autoenablesItems = false
+        colorMenu.delegate = self
         autoItem.target = self
         Self.setTitle(autoItem, "Auto", subtitle: "Vivid colours, readable on whatever is behind")
         colorMenu.addItem(autoItem)
@@ -275,7 +276,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         updateAutoStatus(auto: mode == .autoContrast)
     }
 
-    /// Hovering a style or font tries it on the lyrics; clicking keeps it (the pick saves it as before).
+    /// Hovering a style, font or preset colour tries it on the lyrics; clicking keeps it (the pick saves it
+    /// as before). Auto, Match album artwork and Custom… just show the saved look while hovered.
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
         if menu === styleMenu {
             let style = item.map { LyricsStyle.allCases[$0.tag] }
@@ -283,6 +285,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         } else if menu === fontMenu {
             let face = item.flatMap { $0 === typewriterNote ? nil : LyricsFont.allCases[$0.tag] }
             schedule(menu, after: 0.08) { $0.preview(font: face) }
+        } else if menu === colorMenu {
+            let color = item.flatMap { presetItems.contains($0) ? ColorPreset.all[$0.tag].color : nil }
+            schedule(menu, after: 0.08) { $0.preview(color: color) }
         }
     }
 
@@ -292,6 +297,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     func menuDidClose(_ menu: NSMenu) {
         if menu === styleMenu || menu === self.menu { schedule(styleMenu, after: 0.15) { $0.preview(style: nil) } }
         if menu === fontMenu || menu === self.menu { schedule(fontMenu, after: 0.15) { $0.preview(font: nil) } }
+        if menu === colorMenu || menu === self.menu { schedule(colorMenu, after: 0.15) { $0.preview(color: nil) } }
     }
 
     private func schedule(_ menu: NSMenu, after delay: TimeInterval, _ apply: @escaping (LyricsController) -> Void) {

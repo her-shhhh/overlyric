@@ -65,7 +65,7 @@ final class LyricsController {
         panel.moveTop(to: settings.windowTop)
         view.locked = settings.clickThrough
         sampler.onChoice = { [weak self] choice in
-            guard let self, self.settings.colorMode == .autoContrast else { return }
+            guard let self, self.settings.colorMode == .autoContrast, self.previewColor == nil else { return }
             self.view.setColor(NSColor(srgbRed: choice.color.r, green: choice.color.g, blue: choice.color.b, alpha: 1), animated: true)
         }
         updateColorSource()
@@ -106,9 +106,11 @@ final class LyricsController {
 
     // MARK: Settings
 
-    /// A style or font being tried out from the menu (hovered, not picked yet; never saved). Nil = the saved one.
+    /// A style, font or colour being tried out from the menu (hovered, not picked yet; never saved).
+    /// Nil = the saved one.
     private var previewStyle: LyricsStyle?
     private var previewFont: LyricsFont?
+    private var previewColor: NSColor?
 
     func preview(style: LyricsStyle?) {
         previewStyle = style
@@ -118,6 +120,12 @@ final class LyricsController {
     func preview(font: LyricsFont?) {
         previewFont = font
         applyLook()
+    }
+
+    /// A preset colour on the lyrics at once; nil puts back the saved colour source (Auto, artwork or a colour).
+    func preview(color: NSColor?) {
+        previewColor = color
+        updateColorSource()
     }
 
     /// The style and font on screen: the one being tried out, else the saved one.
@@ -142,6 +150,10 @@ final class LyricsController {
         let mode = settings.colorMode
         sampler.setEnabled(mode == .autoContrast && visible)
         sampler.setPeriodic(monitor.snapshot.isPlaying)
+        if let previewColor {
+            view.setColor(previewColor, animated: false)
+            return
+        }
         switch mode {
         case .autoContrast:
             if let c = sampler.choice {
@@ -171,7 +183,7 @@ final class LyricsController {
             guard let url else {
                 // No artwork (or a different track by now): the default colour, and try again next time.
                 self.artworkTrackKey = nil
-                if self.settings.colorMode == .artwork { self.view.setColor(self.settings.color, animated: true) }
+                if self.settings.colorMode == .artwork, self.previewColor == nil { self.view.setColor(self.settings.color, animated: true) }
                 return
             }
             Task { @MainActor [weak self] in
@@ -181,7 +193,7 @@ final class LyricsController {
                 // Kept even if the mode changed meanwhile, so switching back to Artwork shows it at once.
                 let color = rgb.map { NSColor(srgbRed: $0.r, green: $0.g, blue: $0.b, alpha: 1) } ?? self.settings.color
                 self.artworkColor = color
-                if self.settings.colorMode == .artwork { self.view.setColor(color, animated: true) }
+                if self.settings.colorMode == .artwork, self.previewColor == nil { self.view.setColor(color, animated: true) }
             }
         }
     }

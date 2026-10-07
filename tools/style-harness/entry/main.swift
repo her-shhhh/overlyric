@@ -7,6 +7,7 @@ import QuartzCore
 let ROOT = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp/allstyles"
 nonisolated(unsafe) var OUT = ROOT
 nonisolated(unsafe) var face = LyricsFont.defaultFont
+nonisolated(unsafe) var tint = NSColor(srgbRed: 1, green: 0.89, blue: 0.4, alpha: 1)
 let scale: CGFloat = 2
 let canvas = CGSize(width: 760, height: 340)
 
@@ -21,7 +22,7 @@ let lyrics = SyncedLyrics(lines: [
 ])
 
 @MainActor func ctx(_ size: CGFloat = 34) -> RenderContext {
-    RenderContext(fontSize: size, color: NSColor(srgbRed: 1, green: 0.89, blue: 0.4, alpha: 1),
+    RenderContext(fontSize: size, color: tint,
                   wrapWidth: 2 * floor(min(max(size * 16, 320), 1200) / 2), scale: scale, face: face)
 }
 
@@ -134,8 +135,23 @@ let reachLyrics = SyncedLyrics(lines: [
             }
         }
     }
+    // Colour previews recolour whatever is on screen in place: it must match a fresh render in that colour.
+    let mint = NSColor(srgbRed: 0.56, green: 0.94, blue: 0.78, alpha: 1), lemon = tint
+    for s in LyricsStyle.allCases {
+        face = .defaultFont
+        tint = lemon
+        let host = Host(s.makeRenderer())
+        let off = Offscreen(host.root, width: w, height: h, scale: scale)
+        _ = host.show(paused(), advancing: false, ctx())
+        _ = off.frame(at: CACurrentMediaTime() + 0.1, path: nil)
+        tint = mint
+        host.r.recolor(context: ctx())
+        let got = off.frame(at: CACurrentMediaTime() + 0.5, path: nil)
+        if diff(got, fresh(s, .defaultFont)).over32 > 0 { bad.append("\(s.rawValue):recolour") }
+        tint = lemon
+    }
     face = .defaultFont
-    check(bad.isEmpty, "style and font switches mid-transition match a fresh render (\(bad.count) mismatches: \(bad.prefix(8).joined(separator: ", ")))")
+    check(bad.isEmpty, "style, font and colour switches match a fresh render (\(bad.count) mismatches: \(bad.prefix(8).joined(separator: ", ")))")
 }
 
 @MainActor func run() {
