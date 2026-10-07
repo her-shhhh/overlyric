@@ -73,6 +73,7 @@ cp "$PLIST" "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 README_NAME="Read This or Hum Forever.txt"
 ./scripts/render-readme.sh "$APP/Contents/Resources/$README_NAME"   # opened from the app's menu
+./scripts/build-adapter.sh "$APP/Contents/Resources" "$MIN_OS"   # Now Playing (YouTube Music & others)
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 chmod -R u+rwX,go+rX "$APP"   # Gatekeeper must be able to read the signature as any user
 

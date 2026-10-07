@@ -12,6 +12,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let toggleItem = NSMenuItem(title: "Show Lyrics", action: #selector(toggleEnabled), keyEquivalent: "")
     private let statusTitleItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let statusDetailItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let sourceMenu = NSMenu(title: "Listen To")
     private let styleMenu = NSMenu(title: "Lyrics Style")
     private let fontMenu = NSMenu(title: "Lyrics Font")
     /// Shown in the font menu only while the Typewriter style (which keeps its own face) is on.
@@ -59,6 +60,16 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         menu.addItem(statusTitleItem)
         menu.addItem(statusDetailItem)
         menu.addItem(.separator())
+
+        sourceMenu.autoenablesItems = false
+        for (i, source) in Settings.Source.allCases.enumerated() {
+            let it = NSMenuItem(title: source.title, action: #selector(pickSource(_:)), keyEquivalent: "")
+            it.target = self
+            it.tag = i
+            Self.setTitle(it, source.title, subtitle: source.subtitle)
+            sourceMenu.addItem(it)
+        }
+        menu.addItem(Self.submenuItem(sourceMenu))
 
         styleMenu.autoenablesItems = false
         for (i, style) in LyricsStyle.allCases.enumerated() {
@@ -149,7 +160,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
         statusItem.menu = menu
         controller.panel.overlayView.contextMenu = menu
-        statusItem.button?.toolTip = "Overlyric — Spotify lyrics overlay"
+        statusItem.button?.toolTip = "Overlyric — lyrics overlay for Spotify, YouTube Music and more"
     }
 
     private static func submenuItem(_ submenu: NSMenu) -> NSMenuItem {
@@ -211,6 +222,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         return item
     }
 
+    @objc private func pickSource(_ sender: NSMenuItem) {
+        settings.source = Settings.Source.allCases[sender.tag]
+    }
+
     @objc private func sliderChanged(_ sender: NSSlider) {
         let size = CGFloat(sender.doubleValue.rounded())
         sizeValueLabel.stringValue = "\(Int(size)) pt"
@@ -233,6 +248,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     // MARK: NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        let source = settings.source
+        for it in sourceMenu.items { it.state = Settings.Source.allCases[it.tag] == source ? .on : .off }
         let style = settings.style
         for it in styleMenu.items { it.state = LyricsStyle.allCases[it.tag] == style ? .on : .off }
         let face = settings.font
@@ -250,7 +267,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         statusDetailItem.title = status.detail
         statusDetailItem.isHidden = status.detail.isEmpty
         // The detail is "allow Automation…" exactly when Spotify can't be read and nothing has been heard yet.
-        let automationBlocked = controller.monitor.automation == .denied && controller.monitor.snapshot.track == nil
+        let automationBlocked = controller.activeSource == .spotify && controller.spotify.automation == .denied && controller.spotify.snapshot.track == nil
         statusDetailItem.action = automationBlocked ? #selector(openAutomationSettings) : nil
         statusDetailItem.isEnabled = automationBlocked
 

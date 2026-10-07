@@ -8,7 +8,7 @@ import OverlyricCore
 ///    and drift correction. Light polls (state + position, ~16 ms) run every 2 s while playing; a full
 ///    poll (with track) runs at start, when a light poll disagrees with our state, and every 10th light poll.
 @MainActor
-final class SpotifyMonitor {
+final class SpotifyMonitor: PlaybackSource {
     nonisolated static let bundleID = "com.spotify.client"
     private static let notificationName = Notification.Name("com.spotify.client.PlaybackStateChanged")
 
@@ -63,7 +63,7 @@ final class SpotifyMonitor {
     }
 
     /// Asks Spotify for the current track's artwork URL (nil if unavailable or a different track is now playing).
-    func fetchArtworkURL(for track: SpotifyTrack, completion: @escaping (URL?) -> Void) {
+    func fetchArtworkURL(for track: Track, completion: @escaping (URL?) -> Void) {
         guard let spotify = runningSpotify, automation != .denied else { completion(nil); return }
         scripter.readArtwork(pid: spotify.processIdentifier) { result in
             guard let result, result.id == track.id || track.id.isEmpty else { completion(nil); return }
@@ -85,6 +85,8 @@ final class SpotifyMonitor {
         pollSoon()
     }
 
+    func open() { LyricsController.openSpotify() }
+
     /// A full read shortly after telling Spotify to do something, to pick up the result.
     private func pollSoon() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
@@ -100,9 +102,9 @@ final class SpotifyMonitor {
         let position = Self.number(info["Playback Position"]) ?? 0
         let id = info["Track ID"] as? String ?? ""
         let name = info["Name"] as? String ?? ""
-        var track: SpotifyTrack?
+        var track: Track?
         if state != "stopped", !(id.isEmpty && name.isEmpty) {
-            track = SpotifyTrack(
+            track = Track(
                 id: id, name: name,
                 artist: info["Artist"] as? String ?? "",
                 album: info["Album"] as? String ?? "",
@@ -110,7 +112,7 @@ final class SpotifyMonitor {
         }
         let now = Date()
         lastPushAt = now
-        Log.spotify.notice("notification: \(state, privacy: .public) pos=\(position, privacy: .public) track=\(track?.name ?? "-", privacy: .public) / \(track?.artist ?? "-", privacy: .public)")
+        Log.player.notice("notification: \(state, privacy: .public) pos=\(position, privacy: .public) track=\(track?.name ?? "-", privacy: .public) / \(track?.artist ?? "-", privacy: .public)")
         apply(track: track, playing: state == "playing", position: position, at: now, fromPoll: false)
     }
 
@@ -163,15 +165,15 @@ final class SpotifyMonitor {
             case .success(let reading):
                 self.handle(reading, full: full)
             case .failure(.denied):
-                Log.spotify.error("automation DENIED (-1743); notification-only mode")
+                Log.player.error("automation DENIED (-1743); notification-only mode")
                 self.automation = .denied
                 self.deniedAt = Date()
                 self.onChange?()
             case .failure(.notRunning):
-                Log.spotify.notice("poll: Spotify not running")
+                Log.player.notice("poll: Spotify not running")
                 self.clear()
             case .failure(.other(let msg)):
-                Log.spotify.error("poll failed: \(msg, privacy: .public)")
+                Log.player.error("poll failed: \(msg, privacy: .public)")
                 self.automation = .unavailable(msg)
                 self.onChange?()
             }
@@ -183,7 +185,7 @@ final class SpotifyMonitor {
         let wasGranted = automation == .granted
         automation = .granted
         if !wasGranted {
-            Log.spotify.notice("automation granted; first read ok")
+            Log.player.notice("automation granted; first read ok")
             onChange?()
         }
         // A notification that arrived while this read was in flight is newer than the read.
@@ -194,7 +196,7 @@ final class SpotifyMonitor {
         } else if let track = r.track {
             apply(track: track, playing: playing, position: r.position, at: r.sampledAt, fromPoll: true)
         } else if full {
-            Log.spotify.notice("full poll returned no track; waiting for next tick")
+            Log.player.notice("full poll returned no track; waiting for next tick")
         } else if let current = snapshot.track {
             // Light poll: escalate ONCE to a full read if anything suggests we missed a track change.
             let expected = snapshot.position(at: r.sampledAt)
@@ -208,7 +210,7 @@ final class SpotifyMonitor {
         }
     }
 
-    private func apply(track: SpotifyTrack?, playing: Bool, position: TimeInterval, at sampledAt: Date, fromPoll: Bool) {
+    private func apply(track: Track?, playing: Bool, position: TimeInterval, at sampledAt: Date, fromPoll: Bool) {
         var s = snapshot
         let trackChanged = s.track != track
         let playChanged = s.isPlaying != playing
@@ -221,10 +223,10 @@ final class SpotifyMonitor {
         s.timestamp = sampledAt
         snapshot = s
         if trackChanged || playChanged {
-            Log.spotify.notice("state: \(playing ? "playing" : "paused", privacy: .public) \(track?.name ?? "-", privacy: .public) @\(position, privacy: .public) (poll=\(fromPoll, privacy: .public))")
+            Log.player.notice("state: \(playing ? "playing" : "paused", privacy: .public) \(track?.name ?? "-", privacy: .public) @\(position, privacy: .public) (poll=\(fromPoll, privacy: .public))")
             reschedule()
         } else {
-            Log.spotify.notice("resync: Δ=\(String(format: "%.2f", drift), privacy: .public)s → @\(String(format: "%.2f", position), privacy: .public) (poll=\(fromPoll, privacy: .public))")
+            Log.player.notice("resync: Δ=\(String(format: "%.2f", drift), privacy: .public)s → @\(String(format: "%.2f", position), privacy: .public) (poll=\(fromPoll, privacy: .public))")
         }
         onChange?()
     }

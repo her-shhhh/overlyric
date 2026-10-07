@@ -2,13 +2,17 @@ import AppKit
 import QuartzCore
 import OverlyricCore
 
-/// Glue: Spotify state → lyrics fetch → playback clock → overlay style.
+/// Glue: player state (Spotify or Now Playing) → lyrics fetch → playback clock → overlay style.
 /// No periodic tick: a one-shot timer is armed for exactly the next line boundary and re-armed on every
 /// state change, so nothing runs while paused, hidden or idle. Time-driven styles animate on the GPU.
 @MainActor
 final class LyricsController {
     let panel = OverlayPanel()
-    let monitor = SpotifyMonitor()
+    let spotify = SpotifyMonitor()
+    let nowPlaying = NowPlayingMonitor()
+    /// The player being followed (Settings › Listen To).
+    private(set) var activeSource = Settings.shared.source
+    var monitor: PlaybackSource { activeSource == .spotify ? spotify : nowPlaying }
     private(set) lazy var sampler = BackgroundSampler(window: panel)
     private(set) lazy var eggs = EasterEggs(view: view)
     private let service = LyricsService()
@@ -57,7 +61,7 @@ final class LyricsController {
         view.onResizeEnded = { [weak self] size in self?.settings.fontSize = size }
         view.onClick = { [weak self] in
             guard let self else { return }
-            if !self.eggs.consumeClick() { Self.openSpotify() }
+            if !self.eggs.consumeClick() { self.monitor.open() }
         }
         view.onShake = { [weak self] in self?.eggs.shake() }
         eggs.enabled = settings.easterEggs
@@ -80,10 +84,12 @@ final class LyricsController {
             MainActor.assumeIsolated { self?.stayOnThisSpace() }
         }
 
-        monitor.onChange = { [weak self] in
+        let changed: () -> Void = { [weak self] in
             self?.playbackChanged()
             self?.playFirstSongIfDue()
         }
+        spotify.onChange = changed
+        nowPlaying.onChange = changed
         monitor.setActive(settings.enabled)
         monitor.start()
         if Onboarding.takeWelcome() {
@@ -93,7 +99,7 @@ final class LyricsController {
                 self?.refresh()
             }
         }
-        if Onboarding.takeFirstSong() { startFirstSong() }
+        if Onboarding.takeFirstSong(), activeSource == .spotify { startFirstSong() }
         refresh()
     }
 
@@ -112,9 +118,21 @@ final class LyricsController {
         if view.style != settings.style { view.style = settings.style }
         eggs.enabled = settings.easterEggs
         view.locked = settings.clickThrough
+        if settings.source != activeSource { switchSource(to: settings.source) }
         monitor.setActive(settings.enabled)
         refresh()
         updateColorSource()
+    }
+
+    /// Stops following one player and starts on the other; the lyrics follow at once.
+    private func switchSource(to source: Settings.Source) {
+        Log.player.notice("source: \(self.activeSource.rawValue, privacy: .public) → \(source.rawValue, privacy: .public)")
+        monitor.stop()
+        firstSongDue = nil
+        activeSource = source
+        monitor.setActive(settings.enabled)
+        monitor.start()
+        playbackChanged()
     }
 
     /// Manual colour, the sampler's pick (auto-contrast), or the artwork theme colour.
@@ -201,7 +219,7 @@ final class LyricsController {
         refresh()
     }
 
-    private func fetch(_ track: SpotifyTrack) {
+    private func fetch(_ track: Track) {
         let generation = fetchGeneration
         Log.lyrics.notice("fetch: \(track.name, privacy: .public) / \(track.artist, privacy: .public) (\(Int(track.duration), privacy: .public)s)")
         fetchTask = Task { @MainActor [weak self] in
@@ -337,7 +355,7 @@ final class LyricsController {
     private func startFirstSong() {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyMonitor.bundleID) != nil else { return }
         firstSongDue = Date().addingTimeInterval(600)
-        if !monitor.isSpotifyRunning { Self.openSpotify(activate: false) }
+        if !spotify.isSpotifyRunning { Self.openSpotify(activate: false) }
         playFirstSongIfDue()
     }
 
@@ -347,20 +365,20 @@ final class LyricsController {
         guard let due = firstSongDue else { return }
         let snap = monitor.snapshot
         if snap.isPlaying, let track = snap.track, Onboarding.isFirstSong(track) {
-            Log.spotify.notice("welcome song is playing")
+            Log.player.notice("welcome song is playing")
             firstSongDue = nil
             return
         }
         guard Date() < due, firstSongTries < 6 else {
-            Log.spotify.notice("welcome song skipped (tries=\(self.firstSongTries, privacy: .public))")
+            Log.player.notice("welcome song skipped (tries=\(self.firstSongTries, privacy: .public))")
             firstSongDue = nil
             return
         }
-        guard monitor.automation == .granted, monitor.isSpotifyRunning, Date() >= firstSongNextTry else { return }
+        guard activeSource == .spotify, spotify.automation == .granted, spotify.isSpotifyRunning, Date() >= firstSongNextTry else { return }
         firstSongTries += 1
         firstSongNextTry = Date().addingTimeInterval(3)
-        Log.spotify.notice("playing the welcome song (try \(self.firstSongTries, privacy: .public))")
-        monitor.play(uri: Onboarding.firstSongURI)
+        Log.player.notice("playing the welcome song (try \(self.firstSongTries, privacy: .public))")
+        spotify.play(uri: Onboarding.firstSongURI)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.1) { [weak self] in self?.playFirstSongIfDue() }
     }
 
@@ -379,10 +397,19 @@ final class LyricsController {
     // MARK: Menu status
 
     var statusText: StatusText {
-        guard monitor.isSpotifyRunning else { return StatusText(title: "Spotify isn't running", detail: "") }
-        let snap = monitor.snapshot
-        guard let track = snap.track else {
-            switch monitor.automation {
+        if activeSource == .nowPlaying {
+            if nowPlaying.availability == .unavailable {
+                return StatusText(title: "Can't read Now Playing on this Mac", detail: "Try Listen To › Spotify")
+            }
+            guard nowPlaying.snapshot.track != nil else {
+                return StatusText(title: "Nothing playing", detail: "Play something in YouTube Music or a browser")
+            }
+            return trackStatus(nowPlaying.snapshot, via: nowPlaying.playerName)
+        }
+        guard spotify.isSpotifyRunning else { return StatusText(title: "Spotify isn't running", detail: "") }
+        let snap = spotify.snapshot
+        guard snap.track != nil else {
+            switch spotify.automation {
             case .denied:
                 return StatusText(title: "Nothing playing", detail: "Allow Automation for Spotify, or press play to sync")
             case .unavailable(let msg):
@@ -391,6 +418,11 @@ final class LyricsController {
                 return StatusText(title: "Nothing playing", detail: "")
             }
         }
+        return trackStatus(snap, via: nil)
+    }
+
+    private func trackStatus(_ snap: PlaybackSnapshot, via player: String?) -> StatusText {
+        guard let track = snap.track else { return StatusText(title: "Nothing playing", detail: "") }
         let icon = snap.isPlaying ? "▶" : "⏸"
         let title = "\(icon)  \(track.name) — \(track.artist)"
         let detail: String
@@ -399,7 +431,7 @@ final class LyricsController {
         } else {
             switch phase {
             case .loading: detail = "Finding lyrics…"
-            case .loaded: detail = "Synced lyrics ✓"
+            case .loaded: detail = player.map { "Synced lyrics ✓  ·  from \($0)" } ?? "Synced lyrics ✓"
             case .notFound: detail = "No synced lyrics found"
             case .failed: detail = "Couldn't reach lrclib.net — will retry"
             case .none: detail = ""

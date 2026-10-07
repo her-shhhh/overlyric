@@ -16,6 +16,39 @@ import Testing
         #expect(TrackNameCleaner.titleVariants("(I Can't Get No) Satisfaction").last == "(I Can't Get No) Satisfaction")
     }
 
+    @Test func youTubeVideoSuffixesAreStripped() {
+        #expect(TrackNameCleaner.titleVariants("Kesariya (Official Video)").last == "Kesariya")
+        #expect(TrackNameCleaner.titleVariants("Blinding Lights [Official Audio]").last == "Blinding Lights")
+        #expect(TrackNameCleaner.titleVariants("Levitating (Lyric Video)").last == "Levitating")
+    }
+
+    @Test func videoTitlesYieldTheSong() {
+        let pipes = TrackNameCleaner.videoGuesses(
+            title: "My Dil Goes Mmmm | Full Song | Salaam Namaste | Saif Ali Khan, Preity Zinta | Shaan, Gayatri Iyer",
+            channel: "YRF")
+        #expect(pipes.first?.title == "My Dil Goes Mmmm")
+        #expect(pipes.contains { $0.title == "My Dil Goes Mmmm" && $0.artist == nil })
+
+        let dashed = TrackNameCleaner.videoGuesses(title: "Arijit Singh - Kesariya (Official Video)", channel: "Sony Music India")
+        #expect(dashed.first?.title == "Kesariya")
+        #expect(dashed.first?.artist == "Arijit Singh")
+
+        let vevo = TrackNameCleaner.videoGuesses(title: "Blinding Lights (Official Audio)", channel: "TheWeekndVEVO")
+        #expect(vevo.first?.title == "Blinding Lights")
+        #expect(vevo.first?.artist == "TheWeeknd")
+
+        let bare = TrackNameCleaner.videoGuesses(
+            title: "Meherbaan Full Video | BANG BANG! | feat Hrithik Roshan & Katrina Kaif | Vishal Shekhar", channel: "Zee Music Company")
+        #expect(bare.first?.title == "Meherbaan")
+
+        let singerFirst = TrackNameCleaner.videoGuesses(
+            title: "Kunal Ganjawala | Channa Vey | Music Video | Channa Vey Ghar Aa Ja Vey | Romantic Song", channel: "UMusicIndiaVEVO")
+        #expect(singerFirst.contains { $0.title == "Channa Vey" && $0.artist == "Kunal Ganjawala" })
+
+        #expect(TrackNameCleaner.looksLikeVideoTitle("Song | Movie"))
+        #expect(!TrackNameCleaner.looksLikeVideoTitle("Ranjha Ranjha"))
+    }
+
     @Test func dedupesAndKeepsOrder() {
         #expect(TrackNameCleaner.titleVariants("Yellow") == ["Yellow"])
     }

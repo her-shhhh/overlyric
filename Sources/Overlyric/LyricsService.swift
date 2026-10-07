@@ -31,11 +31,11 @@ final class LyricsService {
         session = URLSession(configuration: c)
     }
 
-    static func cacheKey(for track: SpotifyTrack) -> String {
+    static func cacheKey(for track: Track) -> String {
         track.id.isEmpty ? "\(track.name)|\(track.artist)|\(Int(track.duration))" : track.id
     }
 
-    func lyrics(for track: SpotifyTrack) async -> Result<SyncedLyrics?, LookupError> {
+    func lyrics(for track: Track) async -> Result<SyncedLyrics?, LookupError> {
         let key = Self.cacheKey(for: track)
         if let cached = cache[key] { return .success(cached) }
         switch disk.load(key) {
@@ -68,12 +68,17 @@ final class LyricsService {
     // MARK: Lookup chain (see docs/ARCHITECTURE.md § LyricsService)
 
     /// The parsed lyrics and the raw LRC text they came from (for the disk cache).
-    private func resolve(_ t: SpotifyTrack) async throws -> (SyncedLyrics?, String?) {
+    private func resolve(_ t: Track) async throws -> (SyncedLyrics?, String?) {
         let duration: TimeInterval? = t.duration > 0 ? t.duration : nil
         let primary = TrackNameCleaner.primaryArtist(t.artist)
         let titles = TrackNameCleaner.titleVariants(t.name)
         let cleaned = titles.last ?? t.name
         let album: String? = t.album.isEmpty ? nil : t.album
+
+        // A web player's title is often a whole video name, with the channel as artist: try reading the
+        // song out of it first (by title, matched on duration so a different cut never drifts).
+        let fromWeb = t.id.hasPrefix("nowplaying:") && TrackNameCleaner.looksLikeVideoTitle(t.name)
+        if fromWeb, let found = try await resolveVideo(t, duration: duration) { return found }
 
         // Stage A — exact lookups, cheapest first. lrclib already folds case/punctuation/diacritics.
         var attempts: [(track: String, artist: String, album: String?)] = [
@@ -103,6 +108,19 @@ final class LyricsService {
             return (parsed, raw)
         }
         return (nil, nil)
+    }
+
+    /// Stage W — song guesses from a video title (see `TrackNameCleaner.videoGuesses`).
+    private func resolveVideo(_ t: Track, duration: TimeInterval?) async throws -> (SyncedLyrics?, String?)? {
+        for guess in TrackNameCleaner.videoGuesses(title: t.name, channel: t.artist) {
+            Log.lyrics.notice("video guess: \(guess.title, privacy: .public) / \(guess.artist ?? "(any artist)", privacy: .public)")
+            let candidates = try await search(track: guess.title, artist: guess.artist)
+            if let best = LyricsMatcher.best(from: candidates, duration: duration, title: guess.title),
+               let raw = best.syncedLyrics, let parsed = LRCParser.parse(raw) {
+                return (parsed, raw)
+            }
+        }
+        return nil
     }
 
     // MARK: HTTP
