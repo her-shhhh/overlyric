@@ -163,7 +163,8 @@ let reachLyrics = SyncedLyrics(lines: [
         // The real face, not the rounded fallback (rounded itself is the fallback, so it always passes).
         for w in [NSFont.Weight.heavy, .bold, .semibold, .medium] {
             let name = f.font(34, w).fontName
-            let expected = ["rounded": "Rounded", "serif": "NewYork", "poster": "Futura-Condensed", "script": "SnellRoundhand"][f.rawValue]!
+            let expected = ["rounded": "Rounded", "serif": "NewYork", "poster": "Futura-Condensed", "script": "SnellRoundhand",
+                            "chic": "Optima", "retro": "Rockwell", "notebook": "Noteworthy"][f.rawValue]!
             check(name.contains(expected), "\(f.rawValue) weight \(w.rawValue) -> \(name)")
         }
         runStyles()

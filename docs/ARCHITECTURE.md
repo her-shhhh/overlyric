@@ -62,7 +62,8 @@ off at a word's edge. Styles: Two Lines, One Line, Scrolling (teleprompter), Typ
 Dynamic (billboard rows), Pop, Jump, Glide, Cube.
 
 **Fonts** — `LyricsFont` (Rounded = SF Pro Rounded, Serif = New York, Poster = Futura Condensed, Script =
-Snell Roundhand), all shipped with macOS. `RenderContext.face` carries the choice into every style;
+Snell Roundhand, Chic = Optima, Retro = Rockwell, Notebook = Noteworthy), all shipped with macOS.
+`RenderContext.face` carries the choice into every style;
 `LyricsFont.font(_:_:)` maps the styles' weights onto what each family has and falls back to Rounded.
 Script's swashes reach up to 0.62 em past their box (`swashReach`); the window's side padding
 (`RenderContext.sidePadding`), Jump's word pieces and Karaoke's sweep add that reach, so nothing is cut

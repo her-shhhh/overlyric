@@ -70,8 +70,9 @@ USE IT
 - Lyrics Style: 10 looks - Dynamic, Jump, Typewriter, Karaoke, Cube
   and more. Try them all. Pick a favourite. Change your mind every
   song.
-- Lyrics Font: Rounded, Serif, Poster or Script. Script for the love
-  songs, Poster for the ones you scream in the car.
+- Lyrics Font: Rounded, Serif, Poster, Script, Chic, Retro or
+  Notebook. Script for the love songs, Poster for the ones you scream
+  in the car, Notebook for the ones you'd write on your hand.
 - Can't decide? Hover over a style, font or colour in the menu and
   the lyrics try it on right away. Click to keep it, move away to
   undo.

@@ -59,7 +59,7 @@ enum LyricsStyle: String, CaseIterable {
 /// always types in its own typewriter face.
 enum LyricsFont: String, CaseIterable {
     // Menu order; the first case is the default font.
-    case rounded, serif, poster, script
+    case rounded, serif, poster, script, chic, retro, notebook
 
     static let defaultFont: LyricsFont = .rounded
 
@@ -69,6 +69,9 @@ enum LyricsFont: String, CaseIterable {
         case .serif: return "Serif"
         case .poster: return "Poster"
         case .script: return "Script"
+        case .chic: return "Chic"
+        case .retro: return "Retro"
+        case .notebook: return "Notebook"
         }
     }
 
@@ -78,16 +81,20 @@ enum LyricsFont: String, CaseIterable {
         case .serif: return "Elegant, like a book cover"
         case .poster: return "Tall and loud, like a gig poster"
         case .script: return "Handwritten, like a love letter"
+        case .chic: return "Graceful, like a perfume ad"
+        case .retro: return "Chunky, like a vinyl sleeve"
+        case .notebook: return "Doodled, like a notebook margin"
         }
     }
 
     /// How far (fraction of the font size) this face's swashes reach past the typeset box, beyond the slight
     /// overhang every margin already allows for. Snell Roundhand's f and j hooks reach back 0.62, its K and
-    /// I tails 0.42; Rounded, Serif and Poster stay within 0.06.
+    /// I tails 0.42; Noteworthy's hooks 0.20; the others stay within 0.08.
     var swashReach: CGFloat {
         switch self {
-        case .rounded, .serif, .poster: return 0
+        case .rounded, .serif, .poster, .chic, .retro: return 0
         case .script: return 0.62
+        case .notebook: return 0.1
         }
     }
 
@@ -95,8 +102,8 @@ enum LyricsFont: String, CaseIterable {
     var tracking: CGFloat {
         switch self {
         case .rounded: return -0.015
-        case .serif: return -0.01
-        case .poster, .script: return 0
+        case .serif, .chic, .retro: return -0.01
+        case .poster, .script, .notebook: return 0
         }
     }
 
@@ -118,6 +125,15 @@ enum LyricsFont: String, CaseIterable {
             let heavy = weight.rawValue >= NSFont.Weight.heavy.rawValue
             let names = heavy ? ["SnellRoundhand-Black", "SnellRoundhand-Bold"] : ["SnellRoundhand-Bold"]
             return Self.named(names, size) ?? Self.system(.rounded, size, weight)
+        case .chic:
+            let heavy = weight.rawValue >= NSFont.Weight.heavy.rawValue
+            return Self.named(heavy ? ["Optima-ExtraBlack", "Optima-Bold"] : ["Optima-Bold"], size)
+                ?? Self.system(.rounded, size, weight)
+        case .retro:
+            // Rockwell's Bold is its heaviest cut; the regular one is too light to read over a busy screen.
+            return Self.named(["Rockwell-Bold"], size) ?? Self.system(.rounded, size, weight)
+        case .notebook:
+            return Self.named(["Noteworthy-Bold"], size) ?? Self.system(.rounded, size, weight)
         }
     }
 

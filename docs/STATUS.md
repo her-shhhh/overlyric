@@ -1,4 +1,11 @@
-# Overlyric — status (as of 2026-10-07, version 1.3.0)
+# Overlyric — status (as of 2026-10-07, version 1.3.1)
+
+## 1.3.1 (2026-10-07)
+- **Three more fonts:** Chic (Optima ExtraBlack/Bold), Retro (Rockwell Bold), Notebook (Noteworthy Bold),
+  all shipped with macOS. Notebook's hooks reach 0.20 em past their box, so it gets a little swash reach
+  (0.1); Chic and Retro stay inside the standard margins.
+- Verified offscreen: every style in all 7 fonts, each font resolves to its real face, no lyric ink outside
+  the window, pause freezes, every style/font/colour switch matches a fresh render; 54 unit tests.
 
 ## 1.3.0 (2026-10-07)
 - **Hover to try.** In Lyrics Style, Lyrics Font and Lyrics Colour (the presets), hovering an item (or
