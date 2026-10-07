@@ -3,12 +3,9 @@ import OverlyricCore
 
 /// Tracks whatever macOS shows as Now Playing (the Control Centre media tile): YouTube Music in a browser
 /// tab or as a Safari / Chrome web app, Apple Music, a podcast app, anything that publishes media
-/// metadata. Read through the private MediaRemote framework, loaded at runtime:
-///  - push: MediaRemote's now-playing notifications (track, play/pause, player changes);
-///  - poll: a cheap read every 2 s while playing, for seeks and drift (browsers don't always notify).
+/// metadata. Read through the bundled MediaRemote Adapter (`NowPlayingAdapter`), which streams every
+/// change as it happens; works on every macOS version, with no permission prompt.
 /// The position is the player's elapsed time at its own timestamp, extrapolated by its playback rate.
-/// No permission prompt. MediaRemote is not public API, so every symbol is optional: if one is missing
-/// the monitor reports `.unavailable` instead of crashing.
 @MainActor
 final class NowPlayingMonitor: PlaybackSource {
     enum Availability: Equatable { case unknown, ok, unavailable }
@@ -19,11 +16,14 @@ final class NowPlayingMonitor: PlaybackSource {
     private(set) var playerBundleID: String?
     var onChange: (() -> Void)?
 
-    private let mr = MediaRemote.shared
-    private var pollTimer: Timer?
-    private var active = true
-    private var observers: [NSObjectProtocol] = []
-    private var readGeneration = 0
+    private let adapter = NowPlayingAdapter()
+    private var stream: Process?
+    private var streamGeneration = 0
+    private var streamStartedAt = Date.distantPast
+    /// Streams in a row that ended before saying anything; three means the adapter can't run here.
+    private var quickFailures = 0
+    /// The current Now Playing state: the last full payload with every diff since applied.
+    private var state: [String: Any] = [:]
     private var artworkData: Data?
     private var artworkTrackID: String?
 
@@ -34,44 +34,23 @@ final class NowPlayingMonitor: PlaybackSource {
     }
 
     func start() {
-        guard observers.isEmpty else { return }
-        guard mr.isAvailable else {
-            availability = .unavailable
-            Log.player.error("MediaRemote unavailable; Now Playing can't be read")
-            onChange?()
-            return
-        }
-        mr.register()
-        let names = ["kMRMediaRemoteNowPlayingInfoDidChangeNotification",
-                     "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
-                     "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
-                     "kMRMediaRemoteNowPlayingPlaybackQueueChangedNotification"]
-        for name in names {
-            observers.append(NotificationCenter.default.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.read() }
-            })
-        }
-        read()
-        reschedule()
+        guard stream == nil else { return }
+        quickFailures = 0
+        launch()
     }
 
     func stop() {
-        pollTimer?.invalidate()
-        pollTimer = nil
-        observers.forEach(NotificationCenter.default.removeObserver)
-        observers = []
-        if mr.isAvailable { mr.unregister() }
+        streamGeneration += 1                // its exit is expected: don't relaunch
+        stream?.terminate()
+        stream = nil
+        state = [:]
         snapshot = .empty
     }
 
-    func setActive(_ value: Bool) {
-        guard value != active else { return }
-        active = value
-        reschedule()
-        if active { read() }
-    }
+    /// The stream only speaks when something changes, so it keeps running while the overlay is hidden.
+    func setActive(_ value: Bool) {}
 
-    /// The cover MediaRemote handed over with the track, as a temporary file (the colour service reads URLs).
+    /// The cover that came with the track, as a temporary file (the colour service reads URLs).
     func fetchArtworkURL(for track: Track, completion: @escaping (URL?) -> Void) {
         guard artworkTrackID == track.id, let data = artworkData else { completion(nil); return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("overlyric-artwork-\(abs(track.id.hashValue)).img")
@@ -81,9 +60,7 @@ final class NowPlayingMonitor: PlaybackSource {
     /// Encore: back to the top of the current song, and play.
     func restart(trackID: String) {
         guard snapshot.track?.id == trackID else { return }
-        mr.setElapsedTime(0)
-        mr.send(.play)
-        readSoon()
+        adapter.run(["seek", "0"]) { [adapter] in adapter.run(["send", "0"]) }
     }
 
     /// Brings the player forward (the web app, browser or music app).
@@ -95,68 +72,77 @@ final class NowPlayingMonitor: PlaybackSource {
 
     // MARK: Reading
 
-    private func reschedule() {
-        pollTimer?.invalidate()
-        let interval: TimeInterval = active ? (snapshot.isPlaying ? 2 : 5) : 20
-        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.read() }
+    private func launch() {
+        streamGeneration += 1
+        let generation = streamGeneration
+        streamStartedAt = Date()
+        let process = adapter.stream(onPayload: { [weak self] payload, diff in
+            guard let self, generation == self.streamGeneration else { return }
+            self.quickFailures = 0
+            if diff {
+                for (key, value) in payload {
+                    if value is NSNull { self.state.removeValue(forKey: key) } else { self.state[key] = value }
+                }
+            } else {
+                self.state = payload
+            }
+            self.handle(self.state)
+        }, onExit: { [weak self] status in
+            guard let self, generation == self.streamGeneration else { return }
+            self.stream = nil
+            let quick = Date().timeIntervalSince(self.streamStartedAt) < 3 && self.availability != .ok
+            self.quickFailures = quick ? self.quickFailures + 1 : 0
+            Log.player.error("now playing stream ended (status \(status, privacy: .public), quick failures \(self.quickFailures, privacy: .public))")
+            if self.quickFailures >= 3 {
+                self.availability = .unavailable
+                self.onChange?()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, generation == self.streamGeneration else { return }
+                self.launch()
+            }
+        })
+        guard let process else {
+            availability = .unavailable
+            Log.player.error("MediaRemote Adapter missing; Now Playing can't be read")
+            onChange?()
+            return
         }
-        timer.tolerance = interval * 0.2
-        RunLoop.main.add(timer, forMode: .common)
-        pollTimer = timer
+        stream = process
     }
 
-    private func readSoon() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            MainActor.assumeIsolated { self?.read() }
-        }
-    }
-
-    /// Three asynchronous reads (info, is-playing, client), applied together once all have answered.
-    private func read() {
-        readGeneration += 1
-        let generation = readGeneration
-        var info: [String: Any]??
-        var playing: Bool?
-        var client: (bundle: String?, parent: String?)?
-        let finish = { [weak self] in
-            guard let self, generation == self.readGeneration,
-                  let info, let playing, let client else { return }
-            self.handle(info: info, playing: playing, bundle: client.parent ?? client.bundle)
-        }
-        mr.nowPlayingInfo { info = .some($0); MainActor.assumeIsolated(finish) }
-        mr.isPlaying { playing = $0; MainActor.assumeIsolated(finish) }
-        mr.client { client = $0; MainActor.assumeIsolated(finish) }
-    }
-
-    private func handle(info: [String: Any]?, playing: Bool, bundle: String?) {
+    private func handle(_ info: [String: Any]) {
         if availability != .ok { availability = .ok; onChange?() }
         let now = Date()
-        guard let info, let title = info[MediaRemote.Key.title] as? String, !title.isEmpty else {
+        let bundle = info["parentApplicationBundleIdentifier"] as? String ?? info["bundleIdentifier"] as? String
+        guard let title = info["title"] as? String, !title.isEmpty else {
             if snapshot != .empty { apply(track: nil, playing: false, position: 0, at: now) }
             playerBundleID = bundle
             return
         }
-        let artist = info[MediaRemote.Key.artist] as? String ?? ""
-        let album = info[MediaRemote.Key.album] as? String ?? ""
-        let duration = Self.number(info[MediaRemote.Key.duration]) ?? 0
+        let artist = info["artist"] as? String ?? ""
+        let album = info["album"] as? String ?? ""
+        let duration = Self.seconds(info["durationMicros"]) ?? 0
         // Web players give a new item id now and then for the same song, so the id is the song itself.
         let id = "nowplaying:\(title)|\(artist)"
         var track = Track(id: id, name: title, artist: artist, album: album, duration: duration)
         // Browsers often report the duration a moment after the title; keep the known one meanwhile.
         if let current = snapshot.track, current.id == id, duration <= 0 { track = current }
 
-        let elapsed = Self.number(info[MediaRemote.Key.elapsed]) ?? 0
-        let rate = Self.number(info[MediaRemote.Key.rate]) ?? (playing ? 1 : 0)
+        let elapsed = Self.seconds(info["elapsedTimeMicros"]) ?? 0
+        let reportsPlaying = (info["playing"] as? Bool) ?? false
+        let rate = Self.number(info["playbackRate"]) ?? (reportsPlaying ? 1 : 0)
         // Browsers flip the rate to 0 a moment before (or instead of) saying they paused.
-        let playing = playing && rate > 0
-        let stamp = info[MediaRemote.Key.timestamp] as? Date ?? now
+        let playing = reportsPlaying && rate > 0
+        let stamp = Self.seconds(info["timestampEpochMicros"]).map { Date(timeIntervalSince1970: $0) } ?? now
         var position = elapsed
         if playing { position += now.timeIntervalSince(stamp) * rate }
         if track.duration > 0 { position = min(position, track.duration) }
 
         playerBundleID = bundle
-        if track.id != artworkTrackID || artworkData == nil, let art = info[MediaRemote.Key.artwork] as? Data {
+        if track.id != artworkTrackID || artworkData == nil,
+           let art = (info["artworkData"] as? String).flatMap({ Data(base64Encoded: $0) }) {
             artworkData = art
             artworkTrackID = track.id
         } else if track.id != artworkTrackID {
@@ -180,7 +166,6 @@ final class NowPlayingMonitor: PlaybackSource {
         snapshot = s
         if trackChanged || playChanged {
             Log.player.notice("now playing: \(playing ? "playing" : "paused", privacy: .public) \(track?.name ?? "-", privacy: .public) / \(track?.artist ?? "-", privacy: .public) @\(position, privacy: .public) via \(self.playerBundleID ?? "?", privacy: .public)")
-            reschedule()
         } else {
             Log.player.notice("resync: Δ=\(String(format: "%.2f", drift), privacy: .public)s → @\(String(format: "%.2f", position), privacy: .public)")
         }
@@ -192,86 +177,92 @@ final class NowPlayingMonitor: PlaybackSource {
         if let s = v as? String { return Double(s) }
         return nil
     }
+
+    private static func seconds(_ micros: Any?) -> Double? { number(micros).map { $0 / 1_000_000 } }
 }
 
-/// The handful of MediaRemote.framework calls we use, looked up with dlsym.
-/// Note: macOS 15.4 and later only answer these for Apple-entitled processes; there it reads nothing.
-final class MediaRemote: @unchecked Sendable {
-    static let shared = MediaRemote()
+/// The bundled MediaRemote Adapter (Vendor/MediaRemoteAdapter). Since macOS 15.4 only Apple's own
+/// processes may read Now Playing through the private MediaRemote framework; the adapter runs Apple's
+/// /usr/bin/perl, which still may, loads a small helper framework into it and prints what is playing as
+/// JSON lines. The helper is copied out of the app first: a downloaded copy of the app carries the
+/// quarantine flag, and macOS would refuse to load a flagged library into perl.
+final class NowPlayingAdapter: @unchecked Sendable {
+    private static let perl = URL(fileURLWithPath: "/usr/bin/perl")
+    private let queue = DispatchQueue(label: "overlyric.nowplaying")
 
-    enum Key {
-        static let title = "kMRMediaRemoteNowPlayingInfoTitle"
-        static let artist = "kMRMediaRemoteNowPlayingInfoArtist"
-        static let album = "kMRMediaRemoteNowPlayingInfoAlbum"
-        static let duration = "kMRMediaRemoteNowPlayingInfoDuration"
-        static let elapsed = "kMRMediaRemoteNowPlayingInfoElapsedTime"
-        static let rate = "kMRMediaRemoteNowPlayingInfoPlaybackRate"
-        static let timestamp = "kMRMediaRemoteNowPlayingInfoTimestamp"
-        static let artwork = "kMRMediaRemoteNowPlayingInfoArtworkData"
-    }
-
-    enum Command: Int32 { case play = 0, pause = 1, toggle = 2 }
-
-    private typealias InfoFn = @convention(c) (DispatchQueue, @escaping (NSDictionary?) -> Void) -> Void
-    private typealias PlayingFn = @convention(c) (DispatchQueue, @escaping (Bool) -> Void) -> Void
-    private typealias ClientFn = @convention(c) (DispatchQueue, @escaping (AnyObject?) -> Void) -> Void
-    private typealias ClientStringFn = @convention(c) (AnyObject?) -> Unmanaged<CFString>?
-    private typealias RegisterFn = @convention(c) (DispatchQueue) -> Void
-    private typealias UnregisterFn = @convention(c) () -> Void
-    private typealias SetElapsedFn = @convention(c) (Double) -> Void
-    private typealias SendFn = @convention(c) (Int32, NSDictionary?) -> Bool
-
-    private let getInfo: InfoFn?
-    private let getPlaying: PlayingFn?
-    private let getClient: ClientFn?
-    private let clientBundle: ClientStringFn?
-    private let clientParent: ClientStringFn?
-    private let registerFn: RegisterFn?
-    private let unregisterFn: UnregisterFn?
-    private let setElapsedFn: SetElapsedFn?
-    private let sendFn: SendFn?
-
-    private init() {
-        let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW)
-        func load<T>(_ name: String, _: T.Type) -> T? {
-            guard let handle, let p = dlsym(handle, name) else { return nil }
-            return unsafeBitCast(p, to: T.self)
+    /// Starts `stream`: every update arrives on the main actor, as (payload, isDiff). Nil if it can't start.
+    func stream(onPayload: @escaping @MainActor ([String: Any], Bool) -> Void,
+                onExit: @escaping @MainActor (Int32) -> Void) -> Process? {
+        guard let p = process(["stream", "--micros", "--debounce=100"]) else { return nil }
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        var buffer = Data()
+        out.fileHandleForReading.readabilityHandler = { [queue] handle in
+            let chunk = handle.availableData
+            queue.async {
+                guard !chunk.isEmpty else { return }
+                buffer.append(chunk)
+                while let nl = buffer.firstIndex(of: 0x0A) {
+                    let line = buffer[buffer.startIndex..<nl]
+                    buffer.removeSubrange(buffer.startIndex...nl)
+                    guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                          let payload = object["payload"] as? [String: Any] else { continue }
+                    let diff = object["diff"] as? Bool ?? false
+                    DispatchQueue.main.async { MainActor.assumeIsolated { onPayload(payload, diff) } }
+                }
+            }
         }
-        getInfo = load("MRMediaRemoteGetNowPlayingInfo", InfoFn.self)
-        getPlaying = load("MRMediaRemoteGetNowPlayingApplicationIsPlaying", PlayingFn.self)
-        getClient = load("MRMediaRemoteGetNowPlayingClient", ClientFn.self)
-        clientBundle = load("MRNowPlayingClientGetBundleIdentifier", ClientStringFn.self)
-        clientParent = load("MRNowPlayingClientGetParentAppBundleIdentifier", ClientStringFn.self)
-        registerFn = load("MRMediaRemoteRegisterForNowPlayingNotifications", RegisterFn.self)
-        unregisterFn = load("MRMediaRemoteUnregisterForNowPlayingNotifications", UnregisterFn.self)
-        setElapsedFn = load("MRMediaRemoteSetElapsedTime", SetElapsedFn.self)
-        sendFn = load("MRMediaRemoteSendCommand", SendFn.self)
-    }
-
-    var isAvailable: Bool { getInfo != nil && getPlaying != nil }
-
-    func register() { registerFn?(.main) }
-    func unregister() { unregisterFn?() }
-
-    /// Callbacks arrive on the main queue.
-    func nowPlayingInfo(_ completion: @escaping ([String: Any]?) -> Void) {
-        guard let getInfo else { completion(nil); return }
-        getInfo(.main) { completion($0 as? [String: Any]) }
-    }
-
-    func isPlaying(_ completion: @escaping (Bool) -> Void) {
-        guard let getPlaying else { completion(false); return }
-        getPlaying(.main, completion)
-    }
-
-    func client(_ completion: @escaping ((bundle: String?, parent: String?)) -> Void) {
-        guard let getClient else { completion((nil, nil)); return }
-        getClient(.main) { [clientBundle, clientParent] c in
-            completion((clientBundle?(c)?.takeUnretainedValue() as String?,
-                        clientParent?(c)?.takeUnretainedValue() as String?))
+        p.terminationHandler = { p in
+            out.fileHandleForReading.readabilityHandler = nil
+            let status = p.terminationStatus
+            DispatchQueue.main.async { MainActor.assumeIsolated { onExit(status) } }
         }
+        do { try p.run() } catch {
+            Log.player.error("now playing stream failed to start: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        return p
     }
 
-    func setElapsedTime(_ seconds: Double) { setElapsedFn?(seconds) }
-    @discardableResult func send(_ command: Command) -> Bool { sendFn?(command.rawValue, nil) ?? false }
+    /// A one-off command (seek, send); `then` runs once it has finished.
+    func run(_ arguments: [String], then: (@Sendable () -> Void)? = nil) {
+        guard let p = process(arguments) else { return }
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        p.terminationHandler = { _ in then?() }
+        try? p.run()
+    }
+
+    private func process(_ arguments: [String]) -> Process? {
+        guard let helper = installedHelper() else { return nil }
+        let p = Process()
+        p.executableURL = Self.perl
+        p.arguments = [helper.script.path, helper.framework.path] + arguments
+        return p
+    }
+
+    /// The script and framework, copied byte for byte (no quarantine flag) to Application Support, only
+    /// when they differ from what's already there.
+    private func installedHelper() -> (script: URL, framework: URL)? {
+        let fm = FileManager.default
+        guard fm.isExecutableFile(atPath: Self.perl.path),
+              let source = Bundle.main.resourceURL?.appendingPathComponent("MediaRemoteAdapter"),
+              let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let dest = support.appendingPathComponent("Overlyric/MediaRemoteAdapter")
+        let files = ["mediaremote-adapter.pl", "MediaRemoteAdapter.framework/MediaRemoteAdapter"]
+        do {
+            for file in files {
+                let from = source.appendingPathComponent(file), to = dest.appendingPathComponent(file)
+                let data = try Data(contentsOf: from)
+                if (try? Data(contentsOf: to)) == data { continue }
+                try fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: to, options: .atomic)
+            }
+        } catch {
+            Log.player.error("MediaRemote Adapter couldn't be installed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        return (dest.appendingPathComponent(files[0]), dest.appendingPathComponent("MediaRemoteAdapter.framework"))
+    }
 }

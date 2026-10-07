@@ -24,7 +24,7 @@ so your work stays visible (your excuses for not working: also
 visible). No login, no account, no subscription, no nonsense.
 
 You need: macOS {{MIN_OS}} or later (Apple menu > About This Mac
-tells you), the Spotify desktop app, and the courage to sing in
+tells you), Spotify or YouTube Music, and the courage to sing in
 front of your colleagues.
 
 
@@ -72,6 +72,9 @@ USE IT
   song.
 - Lyrics Font: Rounded, Serif, Poster or Script. Script for the love
   songs, Poster for the ones you scream in the car.
+- Listen To: Spotify, or YouTube Music & Others (YouTube Music in a
+  browser, a YouTube tab, Apple Music: whatever your Mac shows as
+  Now Playing).
 - Lyrics Colour: pick one, or Auto (a fresh colour you can read on
   whatever is behind the lyrics; needs one more permission, see
   below), or Match album artwork.

@@ -1,5 +1,14 @@
 # Overlyric — status (as of 2026-10-06, version 1.2.0)
 
+## Unreleased — YouTube Music & others (branch `youtube-music`)
+- **Listen To ▸ YouTube Music & Others** (by Sourav): follows whatever macOS shows as Now Playing, and
+  reads song names out of YouTube video titles.
+- Works on every macOS version through the bundled MediaRemote Adapter (MediaRemote is Apple-only since
+  15.4). Verified on macOS 26.5 offscreen: the real `NowPlayingMonitor` read the current song, position,
+  duration and player from a quarantined copy of the helper; the installed copy carries no quarantine
+  flag; no helper process is left after stop. 56 unit tests pass.
+- Not yet verified live: lyrics in sync with YouTube Music actually playing in a browser.
+
 ## 1.2.0 (2026-10-06)
 - **Four fonts.** Menu › Lyrics Font: Rounded (default, unchanged), Serif (New York), Poster (Futura
   Condensed ExtraBold) and Script (Snell Roundhand). All ship with macOS (nothing bundled). Each menu row

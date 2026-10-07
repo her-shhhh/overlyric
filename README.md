@@ -50,7 +50,7 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
    Listening on YouTube Music instead? Pick **Listen To › YouTube Music & Others** in the menu.
 
 Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app — or, for YouTube
-Music, any browser or web app (macOS 14 – 15.3, see below).
+Music, any browser or web app.
 
 ### About the warnings (why they appear, and why it's fine)
 
@@ -147,9 +147,11 @@ forward.
 - **Lyrics only show when they fit this version.** Lyrics are matched on the song's length, so a music
   video with a longer intro or a different cut gets *"No synced lyrics"* rather than words that drift out
   of time. The YouTube Music (album) version or an "Official Audio" upload usually matches.
-- **macOS 14 – 15.3 only.** Now Playing is read through MediaRemote, a part of macOS apps aren't
-  officially allowed to use; from macOS 15.4 Apple keeps it to its own apps, so there the menu says it
-  can't read Now Playing. Spotify works everywhere.
+- **Every macOS version.** Now Playing is read through MediaRemote, a part of macOS that, since macOS
+  15.4, only Apple's own programs may use. Overlyric bundles the open-source
+  [MediaRemote Adapter](https://github.com/ungive/mediaremote-adapter) (BSD 3-Clause, by Jonas van den
+  Berg and contributors), which asks through Apple's built-in `perl` instead. If a macOS update ever
+  closes that door, the menu says it can't read Now Playing; Spotify keeps working either way.
 
 ## Where do the lyrics come from?
 
@@ -176,9 +178,12 @@ Sources/Overlyric        the app: menu, overlay panel + host view, Spotify and N
                          background sampler, easter eggs, onboarding
   Styles/                one renderer per lyric style on a shared Core Animation toolkit
 Tests/OverlyricCoreTests
+Vendor/MediaRemoteAdapter  third-party Now Playing helper (BSD 3-Clause), built by scripts/build-adapter.sh
 docs/ARCHITECTURE.md     how it works, and the macOS gotchas we hit
 ```
 
 ## License
 
 MIT — see [LICENSE](LICENSE). Fork it, remix it, send a pull request; just keep the copyright notice.
+The bundled MediaRemote Adapter is BSD 3-Clause — see
+[Vendor/MediaRemoteAdapter/LICENSE](Vendor/MediaRemoteAdapter/LICENSE).

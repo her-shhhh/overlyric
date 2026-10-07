@@ -61,6 +61,15 @@ overhang (`TextLayout.overhang`), so script swashes, slanted ascenders and Devan
 off at a word's edge. Styles: Two Lines, One Line, Scrolling (teleprompter), Typewriter, Karaoke (sweep),
 Dynamic (billboard rows), Pop, Jump, Glide, Cube.
 
+**Players** — `PlaybackSource`: `SpotifyMonitor` (Spotify's notification + ScriptingBridge) or
+`NowPlayingMonitor` (Menu › Listen To; whatever macOS shows as Now Playing: YouTube Music, browser tabs,
+Apple Music). Since macOS 15.4 only Apple's processes may read MediaRemote, so Now Playing comes from the
+vendored MediaRemote Adapter: `/usr/bin/perl` loads its helper framework and streams JSON lines (`stream
+--micros`, diffs merged). The helper is copied byte for byte to Application Support before use, so a
+downloaded (quarantined) copy of the app can still load it. Three quick stream failures in a row =
+"Can't read Now Playing". Video-style titles ("Song | Movie | Cast") are turned into song guesses
+(`TrackNameCleaner.videoGuesses`), matched on duration.
+
 **Fonts** — `LyricsFont` (Rounded = SF Pro Rounded, Serif = New York, Poster = Futura Condensed, Script =
 Snell Roundhand), all shipped with macOS. `RenderContext.face` carries the choice into every style;
 `LyricsFont.font(_:_:)` maps the styles' weights onto what each family has and falls back to Rounded.
