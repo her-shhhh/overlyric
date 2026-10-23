@@ -86,6 +86,11 @@ final class TextLayout {
         Fragment(rect: toLayer(f.used), characterRange: f.chars)
     }
 
+    /// Whether the line reads right to left (Urdu, Arabic, Hebrew…). TextKit resolves the paragraph
+    /// direction from the first strong character; this reads the result off the typeset glyphs, so it
+    /// always agrees with what is drawn.
+    lazy var isRightToLeft: Bool = manager.firstLineReadsRightToLeft(in: container) ?? false
+
     /// Words (runs of non-whitespace) with their rects. Uses the same geometry as text selection, which
     /// is correct for scripts that reorder glyphs (Devanagari's ि) or run right to left.
     lazy var words: [Word] = {
@@ -262,4 +267,23 @@ final class QuietLayer: CALayer {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
     override func action(forKey event: String) -> CAAction? { nil }
+}
+
+extension NSLayoutManager {
+    /// Whether the first visual line reads right to left: its first logical glyph then sits right of its
+    /// last one. TextKit resolved the paragraph direction from the first strong character, so this agrees
+    /// with the glyphs as drawn. nil when there is nothing to tell (one glyph or none).
+    func firstLineReadsRightToLeft(in container: NSTextContainer) -> Bool? {
+        let glyphs = glyphRange(for: container)
+        guard glyphs.length > 1, let storage = textStorage else { return nil }
+        let text = storage.string as NSString
+        var line = NSRange()
+        _ = lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: &line)
+        var last = NSMaxRange(line) - 1
+        // Trailing whitespace is not part of the visible line (its glyph can sit at either end).
+        while last > glyphs.location, let u = UnicodeScalar(text.character(at: characterIndexForGlyph(at: last))),
+              CharacterSet.whitespacesAndNewlines.contains(u) { last -= 1 }
+        guard last > glyphs.location else { return nil }
+        return location(forGlyphAt: glyphs.location).x > location(forGlyphAt: last).x
+    }
 }

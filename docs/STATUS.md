@@ -1,4 +1,21 @@
-# Overlyric — status (as of 2026-10-07, version 1.3.1)
+# Overlyric — status (as of 2026-10-23, version 1.3.2)
+
+## 1.3.2 (2026-10-23)
+- **Right-to-left lyrics read the right way in Karaoke and Glide.** Karaoke's sweep and Glide's tape were
+  built left to right and stayed that way for Urdu, Arabic and Hebrew, so a Karaoke line lit up from its
+  end and Glide ran the song backwards (the word styles — Jump, Dynamic, Pop — were already right: they
+  place words where the line's own layout put them). A line's direction is now read off TextKit's glyph
+  positions (`TextLayout.isRightToLeft`: the first logical glyph sits right of the last), so it always
+  matches what is drawn. Karaoke's sweep comes in from the right for such a line; Glide mirrors its tape
+  for a song whose lines are mostly right-to-left (it glides left to right, and every line passes the
+  centre in reading order). Typewriter still types from the left: its character stops are measured that
+  way.
+- Verified offscreen: the harness gained a four-line Urdu song and checks, in every font, that an Urdu line
+  reads right to left (Latin, Devanagari and a lone ♪ left to right), that Karaoke's lit part sits at the
+  right early in an Urdu line and at the left in a Latin one, and that Glide's current line moves right
+  for Urdu and left for Latin (lit-pixel centroids); strips `karaoke_S5_*` and `glide_S5_*` eyeballed; all
+  earlier checks still pass (155 in all); 54 unit tests. Not yet watched on screen with a real Urdu song.
+
 
 ## 1.3.1 (2026-10-07)
 - **Three more fonts:** Chic (Optima ExtraBlack/Bold), Retro (Rockwell Bold), Notebook (Noteworthy Bold),

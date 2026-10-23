@@ -58,7 +58,9 @@ its origin at the top-centre of the text block (bounds origin trick), so resizin
 drawn. `TextLayout` wraps TextKit and reports geometry from typeset positions. A `TextLayer`'s bounds are
 that typeset box, but its glyphs are drawn by a sublayer that reaches past it by the layout's measured ink
 overhang (`TextLayout.overhang`), so script swashes, slanted ascenders and Devanagari matras are never cut
-off at a word's edge. Styles: Two Lines, One Line, Scrolling (teleprompter), Typewriter, Karaoke (sweep),
+off at a word's edge. `TextLayout.isRightToLeft` reads a line's direction off its typeset glyphs (the first
+logical glyph sits right of the last), so Karaoke's sweep and Glide's tape follow the reading direction and
+always agree with what is drawn. Styles: Two Lines, One Line, Scrolling (teleprompter), Typewriter, Karaoke (sweep),
 Dynamic (billboard rows), Pop, Jump, Glide, Cube.
 
 **Fonts** — `LyricsFont` (Rounded = SF Pro Rounded, Serif = New York, Poster = Futura Condensed, Script =

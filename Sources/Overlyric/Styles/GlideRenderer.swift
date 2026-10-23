@@ -5,7 +5,9 @@ import OverlyricCore
 // MARK: - Glide
 
 /// Instagram's "Dynamic Lyrics: Glide": the song as one row of text — line • line • line — gliding right
-/// to left through a fixed-width, one-line ticker whose edges fade out.
+/// to left through a fixed-width, one-line ticker whose edges fade out. A right-to-left song (most of its
+/// lines Urdu, Arabic, Hebrew…) glides left to right instead, so every line passes the centre in reading
+/// order: tape positions grow in reading order and are mirrored on screen (`stripX`, `pieceX`).
 ///
 /// Every line owns a stretch of that tape: its text plus half a separator on either side. While the line
 /// is sung its stretch passes the ticker's centre at constant speed, so the line's centre crosses the
@@ -39,6 +41,7 @@ import OverlyricCore
     private var rowHeight: CGFloat = 0
     private var tickerWidth: CGFloat = 0
     private var pixel: CGFloat = 0.5             // one device pixel, in points
+    private var rightToLeft = false              // a right-to-left song: the tape is mirrored on screen
 
     private var texts: [Int: [TextLayer]] = [:]  // item → its text layer(s) (very long lines are split)
     private var bullets: [Int: TextLayer] = [:]  // item → the separator before it
@@ -137,16 +140,20 @@ import OverlyricCore
         }
         var x: CGFloat = 0
         var above = separator.baseline, below = separator.height - separator.baseline
+        var rtl = 0, ltr = 0
         items = []
         items.reserveCapacity(entries.count)
-        for e in entries {
+        for (k, e) in entries.enumerated() {
             let metrics = m.measure(ctx.attributed(e.text))
             let right = x + spacing + metrics.width
             items.append(Item(text: e.text, start: e.start, end: max(e.end, e.start + 0.001), left: x, right: right, metrics: metrics))
             above = max(above, metrics.baseline)
             below = max(below, metrics.height - metrics.baseline)
             x = right
+            // The lyric lines (not the ♪ at either end) vote on the song's direction.
+            if (1...lines.count).contains(k), let r = metrics.rightToLeft { if r { rtl += 1 } else { ltr += 1 } }
         }
+        rightToLeft = rtl > ltr
         lastLine = lines.count
         // One baseline and one height for the whole song: the block never changes size between lines.
         ascent = above
@@ -164,6 +171,12 @@ import OverlyricCore
     /// Rounds to whole device pixels: text at rest that is not on the pixel grid is resampled, and blurs.
     private func snap(_ v: CGFloat) -> CGFloat { (v / pixel).rounded() * pixel }
 
+    /// Strip x that brings tape position `u` to the ticker centre.
+    private func stripX(_ u: CGFloat) -> CGFloat { rightToLeft ? u : -u }
+
+    /// Strip x of the left edge of a piece occupying tape positions `u` to `u` + `width`.
+    private func pieceX(_ u: CGFloat, width: CGFloat) -> CGFloat { rightToLeft ? -(u + width) : u }
+
     /// Tape x at the ticker centre at playback time `t`, while item `k` is current.
     private func tapeX(_ k: Int, at t: TimeInterval) -> CGFloat {
         let it = items[k]
@@ -180,15 +193,15 @@ import OverlyricCore
         strip.removeAnimation(forKey: "glide")
         let t = st.clock.playbackTime()
         guard st.clock.playing, t < it.end else {
-            strip.position = CGPoint(x: snap(-tapeX(q, at: t)), y: 0)
+            strip.position = CGPoint(x: snap(stripX(tapeX(q, at: t))), y: 0)
             return
         }
         var stops: [(time: TimeInterval, x: CGFloat)] = [(it.start, it.left), (it.end, it.right)]
         if q < lastLine, items.indices.contains(q + 1) { stops.append((items[q + 1].end, items[q + 1].right)) }
         let span = stops[stops.count - 1].time - it.start
-        strip.position = CGPoint(x: snap(-stops[stops.count - 1].x), y: 0)
+        strip.position = CGPoint(x: snap(stripX(stops[stops.count - 1].x)), y: 0)
         let a = CAKeyframeAnimation(keyPath: "position.x")
-        a.values = stops.map { -$0.x }
+        a.values = stops.map { stripX($0.x) }
         a.keyTimes = stops.map { NSNumber(value: ($0.time - it.start) / span) }
         a.calculationMode = .linear
         a.beginTime = strip.convertTime(st.clock.hostTime(of: it.start), from: nil)
@@ -216,18 +229,18 @@ import OverlyricCore
         }
         for k in a...b where texts[k] == nil {
             let it = items[k]
-            let left = it.left + spacing / 2
+            let left = pieceX(it.left + spacing / 2, width: it.metrics.width)
             texts[k] = segments(of: it, ctx).map { piece($0.text, left: left + $0.offset, metrics: $0.metrics, ctx) }
         }
         for k in separators where bullets[k] == nil && k < items.count {
-            let l = piece("•", left: items[k].left - separator.width / 2, metrics: separator, ctx)
+            let l = piece("•", left: pieceX(items[k].left - separator.width / 2, width: separator.width), metrics: separator, ctx)
             l.opacity = Self.bulletAlpha
             bullets[k] = l
         }
     }
 
-    /// A text layer for an unwrapped piece of the tape: its first glyph starts at tape x `left` and its
-    /// baseline sits on the row's shared baseline. Laid out wider than its text so it never wraps.
+    /// A text layer for an unwrapped piece of the tape: its text starts at strip x `left` and its baseline
+    /// sits on the row's shared baseline. Laid out wider than its text so it never wraps.
     private func piece(_ text: String, left: CGFloat, metrics: Metrics, _ ctx: RenderContext) -> TextLayer {
         let width = ceil(metrics.width) + 2 * ceil(ctx.fontSize)
         let l = makeTextLayer(ctx) { $0.layout(text, width: width) }
@@ -318,7 +331,7 @@ import OverlyricCore
             guard let note, !note.isHidden else { return [] }
             return wordsOf(note)
         }
-        let dx = -tapeX(q, at: st.clock.playbackTime())
+        let dx = stripX(tapeX(q, at: st.clock.playbackTime()))
         let reach = tickerWidth * CGFloat(0.5 - Self.edge)
         var out: [(text: String, rect: CGRect)] = []
         for l in layers {
@@ -352,6 +365,7 @@ import OverlyricCore
         var width: CGFloat = 0       // advance width of the line
         var height: CGFloat = 0      // == TextLayout.size.height
         var baseline: CGFloat = 0    // from the top of the layout
+        var rightToLeft: Bool? = nil // reads right to left; nil = nothing to tell (one glyph)
     }
 
     /// One reusable TextKit stack at an unlimited width.
@@ -377,6 +391,7 @@ import OverlyricCore
             m.start = used.minX
             m.width = used.width
             m.baseline = fragment.minY + manager.location(forGlyphAt: glyphs.location).y
+            m.rightToLeft = manager.firstLineReadsRightToLeft(in: container)
             return m
         }
 

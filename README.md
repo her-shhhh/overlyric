@@ -92,9 +92,9 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 | **One Line** | Just the line being sung. |
 | **Scrolling Lyrics** | The whole song drifting slowly upwards, the current line lit (Instagram's teleprompter). |
 | **Typewriter** | Types itself out as it's sung, in a typewriter face. |
-| **Karaoke** | Each line lights up left to right as it's sung. |
+| **Karaoke** | Each line lights up as it's sung, in reading order (from the right for Urdu, Arabic or Hebrew). |
 | **Pop** | One word at a time, flashing on as it's sung. |
-| **Glide** | Lyrics glide right to left like a ticker. |
+| **Glide** | Lyrics glide right to left like a ticker (left to right for Urdu, Arabic or Hebrew, so they read the right way round). |
 | **Cube** | Lines roll over like the faces of a cube. |
 
 ### Fonts

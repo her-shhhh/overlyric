@@ -36,6 +36,14 @@ let reachLyrics = SyncedLyrics(lines: [
     LyricLine(time: 16, text: "OK I"),
 ])
 
+/// A right-to-left song: Karaoke's sweep and Glide's tape must come in from the right.
+let urduLyrics = SyncedLyrics(lines: [
+    LyricLine(time: 0, text: "دل کی بات زبان پر آئی"),
+    LyricLine(time: 4, text: "رات بھر چاند ہمارے ساتھ رہا"),
+    LyricLine(time: 8, text: "تم جو آئے تو شہر جاگ اٹھا"),
+    LyricLine(time: 12, text: "خواب میں بھی تمہارا نام لیا"),
+])
+
 @MainActor func content(_ index: Int?, _ position: TimeInterval, playing: Bool = true, host: CFTimeInterval = CACurrentMediaTime(),
                         in song: SyncedLyrics = lyrics) -> StyleContent {
     .lyrics(LyricsState(id: "t", lyrics: song, index: index, clock: PlaybackClock(position: position, hostTime: host, playing: playing)))
@@ -154,6 +162,57 @@ let reachLyrics = SyncedLyrics(lines: [
     check(bad.isEmpty, "style, font and colour switches match a fresh render (\(bad.count) mismatches: \(bad.prefix(8).joined(separator: ", ")))")
 }
 
+/// x centroid (points from the frame's left) of the fully lit lyric pixels: the sung part of a Karaoke line,
+/// the current line in Glide. Dimmed text and the grey background are far darker in red.
+func litCentroidX(_ f: Bitmap) -> Double? {
+    var sum = 0.0, n = 0
+    for y in 0..<f.h { for x in 0..<f.w {
+        let i = (y * f.w + x) * 4                       // BGRA
+        if f.px[i + 2] >= 235, f.px[i] <= 150 { sum += Double(x); n += 1 }
+    } }
+    return n == 0 ? nil : sum / Double(n) / Double(scale)
+}
+
+/// A right-to-left line (Urdu here) is read from the right, so Karaoke's sweep comes in from the right and
+/// Glide's tape runs left to right; left-to-right lines keep their directions. (Jump and the other word
+/// styles place words where the line's own layout put them, so they need nothing.)
+@MainActor func readingDirection() {
+    let w = Int(canvas.width * scale), h = Int(canvas.height * scale)
+    let f = face.rawValue
+    check(ctx().layout(urduLyrics.lines[1].text).isRightToLeft, "\(f): an Urdu line reads right to left")
+    check(!ctx().layout(lyrics.lines[1].text).isRightToLeft, "\(f): a Latin line reads left to right")
+    check(!ctx().layout(lyrics.lines[2].text).isRightToLeft, "\(f): a Devanagari line reads left to right")
+    check(!ctx().layout("♪").isRightToLeft, "\(f): a lone ♪ counts as left to right")
+    for (song, rtl, name) in [(urduLyrics, true, "urdu"), (lyrics, false, "latin")] {
+        // Karaoke through line 1: early on, the lit part sits at the line's start; at the end all of it is lit.
+        do {
+            let host = Host(LyricsStyle.karaoke.makeRenderer())
+            let off = Offscreen(host.root, width: w, height: h, scale: scale)
+            let host0 = CACurrentMediaTime() + 0.05
+            _ = host.show(content(1, 4.0, host: host0, in: song), advancing: false, ctx())
+            CATransaction.flush()
+            let frames = [0.1, 0.6, 1.4, 2.2, 3.0, 3.9].map { off.frame(at: host0 + $0, path: nil) }
+            sheet(frames, path: "\(OUT)/karaoke_S5_\(name)_progress.png")
+            let early = litCentroidX(frames[1]) ?? .nan, whole = litCentroidX(frames[5]) ?? .nan
+            let d = (early - whole) * (rtl ? 1 : -1)
+            check(d > 20, "\(f)/karaoke: \(name) sweep comes in from the \(rtl ? "right" : "left") (lit centroid \(Int(early)) early, \(Int(whole)) at the end)")
+        }
+        // Glide through line 1: the lit line moves left (tape right to left) or right (right-to-left song).
+        do {
+            let host = Host(LyricsStyle.glide.makeRenderer())
+            let off = Offscreen(host.root, width: w, height: h, scale: scale)
+            let host0 = CACurrentMediaTime() + 0.05
+            _ = host.show(content(1, 4.3, host: host0, in: song), advancing: false, ctx())
+            CATransaction.flush()
+            let frames = [0.1, 0.9, 1.7, 2.5, 3.3].map { off.frame(at: host0 + $0, path: nil) }
+            sheet(frames, path: "\(OUT)/glide_S5_\(name)_progress.png")
+            let a = litCentroidX(frames[0]) ?? .nan, b = litCentroidX(frames[3]) ?? .nan
+            let d = (b - a) * (rtl ? 1 : -1)
+            check(d > 20, "\(f)/glide: \(name) tape glides \(rtl ? "left to right" : "right to left") (lit centroid \(Int(a)) → \(Int(b)))")
+        }
+    }
+}
+
 @MainActor func run() {
     let wanted = ProcessInfo.processInfo.environment["FACES"]?.split(separator: ",").map(String.init)
     for f in LyricsFont.allCases where wanted?.contains(f.rawValue) ?? true {
@@ -168,6 +227,7 @@ let reachLyrics = SyncedLyrics(lines: [
             check(name.contains(expected), "\(f.rawValue) weight \(w.rawValue) -> \(name)")
         }
         runStyles()
+        readingDirection()
         for style in LyricsStyle.allCases {
             let counts = [
                 inkOutsideWindow(style, from: (0, 3.9), to: (1, 4.0), times: [0, 0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.45, 0.8, 2.0, 3.5]),

@@ -80,9 +80,9 @@ import OverlyricCore
 // MARK: - Reveal mask (typewriter characters / karaoke sweep)
 
 /// A mask for a `TextLayout` that uncovers it over time, visual line by visual line: either character by
-/// character (typewriter) or as a soft-edged left-to-right sweep (karaoke). Each visual line has a bar that
-/// slides in from the left inside a clip around that line, so it never uncovers a neighbouring line. Runs
-/// entirely on the compositor.
+/// character (typewriter) or as a soft-edged sweep in the line's reading direction (karaoke). Each visual
+/// line has a bar that slides in from the line's start inside a clip around that line, so it never uncovers
+/// a neighbouring line. Runs entirely on the compositor.
 @MainActor private final class RevealMask {
     enum Style {
         case characters
@@ -94,7 +94,9 @@ import OverlyricCore
     private let discrete: Bool
     private var bars: [CALayer] = []
     private var left: [CGFloat] = []                // x of each clip's left edge (layout coordinates)
-    private var travel: [CGFloat] = []              // bar position once its line is fully uncovered
+    private var extent: [CGFloat] = []              // width of each clip
+    private var travel: [CGFloat] = []              // how far a bar comes in to uncover its whole line
+    private let rightToLeft: Bool                   // the sweep comes in from the right (Urdu, Arabic, Hebrew…)
     private var ranges: [ClosedRange<Int>?] = []    // global character indices of each visual line
     private var blank: [Bool] = []                  // per character (characterStops order): whitespace
 
@@ -108,6 +110,9 @@ import OverlyricCore
         case .characters: discrete = true; feather = 0
         case .sweep(let f): discrete = false; feather = f
         }
+        // The sweep follows the line's reading direction. Typing stays left to right: the character stops
+        // are measured that way.
+        rightToLeft = !discrete && layout.isRightToLeft
         mask.frame = CGRect(origin: .zero, size: layout.size)
         let ns = layout.string.string as NSString
         for f in layout.fragments {
@@ -130,9 +135,17 @@ import OverlyricCore
             clip.frame = CGRect(x: f.rect.minX - reach, y: bottom, width: width, height: top - bottom)
             let bar: CALayer
             if feather > 0 {
+                // Solid across the clip, feathered at its leading edge: the right, or the left for a
+                // right-to-left line.
                 let g = CAGradientLayer()
-                g.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
-                g.locations = [0, NSNumber(value: Double(width / (width + feather))), 1]
+                let solid = NSColor.black.cgColor, clear = NSColor.clear.cgColor
+                if rightToLeft {
+                    g.colors = [clear, solid, solid]
+                    g.locations = [0, NSNumber(value: Double(feather / (width + feather))), 1]
+                } else {
+                    g.colors = [solid, solid, clear]
+                    g.locations = [0, NSNumber(value: Double(width / (width + feather))), 1]
+                }
                 g.startPoint = CGPoint(x: 0, y: 0.5)
                 g.endPoint = CGPoint(x: 1, y: 0.5)
                 bar = g
@@ -140,14 +153,16 @@ import OverlyricCore
                 bar = QuietLayer()
                 bar.backgroundColor = NSColor.black.cgColor
             }
-            // position.x is the bar's leading edge: 0 hides the line, `travel` shows all of it.
-            bar.anchorPoint = CGPoint(x: 1, y: 0)
+            // position.x is the bar's leading edge (see `x(_:advanced:)`): it starts just outside the clip
+            // and comes `width + feather` into it.
+            bar.anchorPoint = CGPoint(x: rightToLeft ? 0 : 1, y: 0)
             bar.bounds = CGRect(x: 0, y: 0, width: width + feather, height: top - bottom)
-            bar.position = .zero
+            bar.position = CGPoint(x: rightToLeft ? width : 0, y: 0)
             clip.addSublayer(bar)
             mask.addSublayer(clip)
             bars.append(bar)
             left.append(f.rect.minX - reach)
+            extent.append(width)
             travel.append(width + feather)
             let idx = stops.indices.filter { stops[$0].fragment == j }
             ranges.append(idx.isEmpty ? nil : idx[0]...idx[idx.count - 1])
@@ -155,6 +170,10 @@ import OverlyricCore
     }
 
     private var characterCount: Int { max(1, layout.characterStops.count) }
+
+    /// position.x of bar `j` once its leading edge has come `p` points into the line: 0 = the line is hidden,
+    /// `travel[j]` = all of it uncovered. From the left, or from the right for a right-to-left line.
+    private func x(_ j: Int, advanced p: CGFloat) -> CGFloat { rightToLeft ? extent[j] - p : p }
 
     /// Leading edge of bar `j` once characters 0...k are uncovered. A space has no ink, so typing one keeps
     /// the edge where it was (moving it would bare the next word's first serif).
@@ -180,16 +199,16 @@ import OverlyricCore
         CATransaction.setDisableActions(true)
         for (j, bar) in bars.enumerated() {
             bar.removeAllAnimations()
-            bar.position.x = travel[j]
+            bar.position.x = x(j, advanced: travel[j])
             guard let r = ranges[j] else { continue }
             let a = CAKeyframeAnimation(keyPath: "position.x")
             if discrete {
                 a.calculationMode = .discrete
-                a.values = [0] + r.map { edge(j, through: $0) }
+                a.values = ([0] + r.map { edge(j, through: $0) }).map { x(j, advanced: $0) }
                 a.keyTimes = ([0] + r.map { Double($0 + 1) / Double(characterCount) } + [1]).map { NSNumber(value: $0) }
             } else {
                 let (t0, t1) = window(r)
-                a.values = [0, 0, travel[j], travel[j]]
+                a.values = [0, 0, travel[j], travel[j]].map { x(j, advanced: $0) }
                 a.keyTimes = [0, t0, t1, 1].map { NSNumber(value: $0) }
             }
             a.beginTime = bar.convertTime(start, from: nil)
@@ -206,13 +225,13 @@ import OverlyricCore
         CATransaction.setDisableActions(true)
         for (j, bar) in bars.enumerated() {
             bar.removeAllAnimations()
-            guard let r = ranges[j] else { bar.position.x = travel[j]; continue }
+            guard let r = ranges[j] else { bar.position.x = x(j, advanced: travel[j]); continue }
             if discrete {
                 let typed = Int(min(max(Double(characterCount) * progress, 0), Double(characterCount)))
-                bar.position.x = edge(j, through: typed - 1)
+                bar.position.x = x(j, advanced: edge(j, through: typed - 1))
             } else {
                 let (t0, t1) = window(r)
-                bar.position.x = travel[j] * CGFloat(min(max((progress - t0) / (t1 - t0), 0), 1))
+                bar.position.x = x(j, advanced: travel[j] * CGFloat(min(max((progress - t0) / (t1 - t0), 0), 1)))
             }
         }
         CATransaction.commit()
@@ -341,8 +360,9 @@ import OverlyricCore
 
 // MARK: - Karaoke
 
-/// The current line sits dimmed and lights up left to right as it is sung; the next line waits below. On a
-/// line change everything scrolls up together: the preview grows into the current line in place.
+/// The current line sits dimmed and lights up in reading order as it is sung (left to right, or from the
+/// right for Urdu, Arabic or Hebrew); the next line waits below. On a line change everything scrolls up
+/// together: the preview grows into the current line in place.
 @MainActor final class KaraokeRenderer: BaseRenderer, StyleRenderer {
     private var currentGroup: QuietLayer?
     private var dim: TextLayer?
