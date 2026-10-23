@@ -44,6 +44,10 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
 
     struct Reading {
         let videos: [Video]
+        /// What the browser showed us, for the log: windows, tabs in them, tabs on YouTube.
+        let windows: Int
+        let tabs: Int
+        let youTubeTabs: Int
     }
 
     enum Failure: Error {
@@ -225,14 +229,17 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         let windowCount = windows.count
         if let err = lastError { return .failure(classify(err)) }
         var videos: [Video] = []
+        var tabCount = 0, youTubeCount = 0
         for w in 0..<windowCount {
             guard let window = windows.object(at: w) as? SBObject, let tabs = window.value(forKey: "tabs") as? SBElementArray else { continue }
             lastError = nil
             let urls = tabs.array(byApplying: NSSelectorFromString("URL"))
             if let err = lastError { return .failure(classify(err)) }
+            tabCount += urls.count
             var ids: [Any]?
             for (i, raw) in urls.enumerated() {
                 guard let url = Self.string(raw), Self.isYouTubeWatch(url) else { continue }
+                youTubeCount += 1
                 if ids == nil { ids = tabs.array(byApplying: NSSelectorFromString("id")) }
                 guard let tab = tabs.object(at: i) as? SBObject else { continue }
                 let tabID = ids.flatMap { i < $0.count ? Self.string($0[i]) : nil } ?? url
@@ -257,7 +264,7 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
                 }
             }
         }
-        return .success(Reading(videos: videos))
+        return .success(Reading(videos: videos, windows: windowCount, tabs: tabCount, youTubeTabs: youTubeCount))
     }
 
     private static func isYouTubeWatch(_ url: String) -> Bool {

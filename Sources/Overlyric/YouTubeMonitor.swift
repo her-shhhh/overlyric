@@ -43,6 +43,8 @@ final class YouTubeMonitor {
     private var failuresInARow = 0
     /// Whether the last poll found a YouTube tab anywhere (polling slows right down while there is none).
     private var sawYouTubeTab = false
+    /// The last "windows / tabs / YouTube tabs / videos" summary logged, so the log only notes a change.
+    private var lastSummary = ""
     private var currentTab: BrowserScripter.TabRef?
     /// A track seen once that differs from the current one: it counts when the next poll agrees. YouTube
     /// switches songs in pieces (the URL, the player, the Media Session each at their own moment), so a
@@ -249,6 +251,11 @@ final class YouTubeMonitor {
             case .success(let reading):
                 var names = names
                 names[pid] = browser.name
+                let summary = "\(browser.name): \(reading.windows) windows, \(reading.tabs) tabs, \(reading.youTubeTabs) on YouTube, \(reading.videos.count) with a video"
+                if summary != self.lastSummary {
+                    self.lastSummary = summary
+                    Log.browser.notice("\(summary, privacy: .public)")
+                }
                 self.readAll(rest.dropFirst(), videos: videos + reading.videos, names: names, completion: completion)
             case .failure(let failure):
                 if rest.count > 1 {
