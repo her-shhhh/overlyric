@@ -3,11 +3,17 @@ import Foundation
 import ScriptingBridge
 import OverlyricCore
 
-/// Reads YouTube tabs in a Chromium browser (Chrome, Brave, Edge, Arc, …) through ScriptingBridge on a
+/// Reads YouTube tabs in a Chromium browser (Chrome, Brave, Edge, Arc, Dia, …) through ScriptingBridge on a
 /// dedicated serial queue: one Apple Event per window lists its tabs' URLs, then a small script runs in
 /// each YouTube tab to read the `<video>` element and the page's Media Session metadata.
 /// Needs the browser's "Allow JavaScript from Apple Events" switch (View › Developer) to be on.
+/// All of these browsers list tabs the Chrome way (application › windows › tabs; Dia also hangs them off its
+/// profiles, but a window's tabs are the ones that play). They differ in how a tab is brought to the front
+/// (`activate`), so a `TabRef` remembers which browser it came from.
 final class BrowserScripter: NSObject, SBApplicationDelegate {
+    static let diaBundleID = "company.thebrowser.dia"
+    static let arcBundleID = "company.thebrowser.Browser"
+
     /// One YouTube tab with a video in it.
     struct Video: Equatable {
         let tab: TabRef
@@ -24,10 +30,13 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         let ended: Bool
         let isAd: Bool
         let isMusicSite: Bool
+        /// When `position` was read from this tab (right after its script answered).
+        let sampledAt: Date
     }
 
     struct TabRef: Equatable {
         let pid: pid_t
+        let bundleID: String   // which browser: each brings a tab to the front its own way
         let tabID: String
         let windowIndex: Int   // 0-based, at read time
         let tabIndex: Int      // 0-based, at read time
@@ -35,7 +44,6 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
 
     struct Reading {
         let videos: [Video]
-        let sampledAt: Date
     }
 
     enum Failure: Error {
@@ -77,33 +85,50 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
     }catch(e){return JSON.stringify({error:String(e)});}})()
     """
 
-    /// Every YouTube tab of the browser with the given pid.
-    func read(pid: pid_t, completion: @escaping (Result<Reading, Failure>) -> Void) {
+    /// Every YouTube tab of the browser with the given pid. `bundleID` says which browser it is, for `activate`.
+    func read(pid: pid_t, bundleID: String, completion: @escaping (Result<Reading, Failure>) -> Void) {
         queue.async {
-            let result = self.readSync(pid: pid)
+            let result = self.readSync(pid: pid, bundleID: bundleID)
             DispatchQueue.main.async { completion(result) }
         }
+    }
+
+    /// Lets go of a browser that quit, so its bridge object doesn't linger (a relaunch gets a new pid anyway).
+    func forget(pid: pid_t) {
+        queue.async { self.apps[pid] = nil }
+    }
+
+    /// Lets go of every browser (the YouTube feature was switched off).
+    func forgetAll() {
+        queue.async { self.apps.removeAll() }
     }
 
     /// Starts the video in the given tab again from the top.
     func restart(_ tab: TabRef) {
         queue.async {
-            guard let t = self.tabObject(tab) else { return }
-            _ = self.execute("(function(){var v=document.querySelector('#movie_player video, video');if(v){v.currentTime=0;v.play();}return 'ok';})()", in: t)
+            guard let found = self.locate(tab) else { return }
+            _ = self.execute("(function(){var v=document.querySelector('#movie_player video, video');if(v){v.currentTime=0;v.play();}return 'ok';})()", in: found.tab)
         }
     }
 
-    /// Brings the browser and the given tab to the front.
+    /// Brings the browser and the given tab to the front. Each browser has its own way: Dia's `focus` command
+    /// on the tab (its window `index` is read-only), Arc's `select` on the tab, and Chrome's family sets the
+    /// window's `activeTabIndex`. Nothing is sent unless the browser says it understands it, and the app
+    /// comes forward either way.
     func activate(_ tab: TabRef) {
         queue.async {
-            guard let app = self.bridge(pid: tab.pid), let windows = app.value(forKey: "windows") as? SBElementArray,
-                  tab.windowIndex < windows.count, let window = windows.object(at: tab.windowIndex) as? SBObject else { return }
-            if let tabs = window.value(forKey: "tabs") as? SBElementArray,
-               case let ids = tabs.array(byApplying: NSSelectorFromString("id")),
-               let index = ids.firstIndex(where: { Self.string($0) == tab.tabID }) {
-                window.setValue(index + 1, forKey: "activeTabIndex")
+            if let found = self.locate(tab) {
+                switch tab.bundleID {
+                case Self.diaBundleID:
+                    self.send("focus", to: found.tab)
+                case Self.arcBundleID:
+                    self.send("select", to: found.tab)
+                    self.set(1, forKey: "index", on: found.window)
+                default:
+                    self.set(found.tabIndex + 1, forKey: "activeTabIndex", on: found.window)
+                    self.set(1, forKey: "index", on: found.window)
+                }
             }
-            window.setValue(1, forKey: "index")
             DispatchQueue.main.async {
                 NSRunningApplication(processIdentifier: tab.pid)?.activate()
             }
@@ -121,12 +146,15 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         return app
     }
 
-    private func tabObject(_ tab: TabRef) -> SBObject? {
+    /// Finds the tab by id in the browser's windows, with the window it's in now (nil once it's closed).
+    private func locate(_ tab: TabRef) -> (window: SBObject, tab: SBObject, tabIndex: Int)? {
         guard let app = bridge(pid: tab.pid), let windows = app.value(forKey: "windows") as? SBElementArray else { return nil }
         for w in 0..<windows.count {
             guard let window = windows.object(at: w) as? SBObject, let tabs = window.value(forKey: "tabs") as? SBElementArray else { continue }
             let ids = tabs.array(byApplying: NSSelectorFromString("id"))
-            if let i = ids.firstIndex(where: { Self.string($0) == tab.tabID }), let t = tabs.object(at: i) as? SBObject { return t }
+            if let i = ids.firstIndex(where: { Self.string($0) == tab.tabID }), let t = tabs.object(at: i) as? SBObject {
+                return (window, t, i)
+            }
         }
         return nil
     }
@@ -137,7 +165,36 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         return Self.string(result?.takeUnretainedValue())
     }
 
-    private func readSync(pid: pid_t) -> Result<Reading, Failure> {
+    /// Sends a command that takes no parameters (Dia's `focus`, Arc's `select`) if the browser knows it.
+    private func send(_ command: String, to object: SBObject) {
+        let selector = NSSelectorFromString(command)
+        guard object.responds(to: selector) else {
+            Log.browser.notice("the browser has no '\(command, privacy: .public)' command; only bringing it forward")
+            return
+        }
+        lastError = nil
+        _ = object.perform(selector)
+        if let err = lastError {
+            Log.browser.notice("'\(command, privacy: .public)' failed: \(err.code, privacy: .public) \(err.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Sets a scripting property if the browser has it. Setting a key the browser doesn't know would raise
+    /// (and take the app down), so the setter is checked first.
+    private func set(_ value: Int, forKey key: String, on object: SBObject) {
+        let setter = NSSelectorFromString("set\(key.prefix(1).uppercased())\(key.dropFirst()):")
+        guard object.responds(to: setter) else {
+            Log.browser.notice("the browser has no '\(key, privacy: .public)' property; only bringing it forward")
+            return
+        }
+        lastError = nil
+        object.setValue(value, forKey: key)
+        if let err = lastError {
+            Log.browser.notice("setting '\(key, privacy: .public)' failed: \(err.code, privacy: .public) \(err.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func readSync(pid: pid_t, bundleID: String) -> Result<Reading, Failure> {
         guard let app = bridge(pid: pid) else { return .failure(.notRunning) }
         lastError = nil
         guard let windows = app.value(forKey: "windows") as? SBElementArray else { return .failure(classify(lastError)) }
@@ -155,16 +212,28 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
                 if ids == nil { ids = tabs.array(byApplying: NSSelectorFromString("id")) }
                 guard let tab = tabs.object(at: i) as? SBObject else { continue }
                 let tabID = ids.flatMap { i < $0.count ? Self.string($0[i]) : nil } ?? url
-                guard let json = execute(Self.probe, in: tab) else {
-                    if let err = lastError { return .failure(classify(err)) }
-                    continue
+                let json = execute(Self.probe, in: tab)
+                let sampledAt = Date()
+                guard let json else {
+                    // One tab that won't answer (still loading, crashed, slow) mustn't hide the others. Only
+                    // the two failures that mean no tab will ever answer are the whole read's failure.
+                    guard let err = lastError else { continue }
+                    let failure = classify(err)
+                    switch failure {
+                    case .denied, .javascriptDisabled:
+                        return .failure(failure)
+                    default:
+                        Log.browser.notice("tab \(i, privacy: .public) of window \(w, privacy: .public) didn't answer (\(err.code, privacy: .public)); skipping it")
+                        continue
+                    }
                 }
-                if let video = Self.parse(json, tab: TabRef(pid: pid, tabID: tabID, windowIndex: w, tabIndex: i)) {
+                let ref = TabRef(pid: pid, bundleID: bundleID, tabID: tabID, windowIndex: w, tabIndex: i)
+                if let video = Self.parse(json, tab: ref, sampledAt: sampledAt) {
                     videos.append(video)
                 }
             }
         }
-        return .success(Reading(videos: videos, sampledAt: Date()))
+        return .success(Reading(videos: videos))
     }
 
     private static func isYouTubeWatch(_ url: String) -> Bool {
@@ -173,7 +242,7 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         return path == "/watch" || path.hasPrefix("/shorts/") || path.hasPrefix("/live/") || host == "music.youtube.com"
     }
 
-    private static func parse(_ json: String, tab: TabRef) -> Video? {
+    private static func parse(_ json: String, tab: TabRef, sampledAt: Date) -> Video? {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             Log.browser.error("probe returned non-JSON: \(json.prefix(120), privacy: .public)")
@@ -191,7 +260,8 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         return Video(
             tab: tab, videoID: s("id"), title: s("title"), channel: s("artist"), album: s("album"),
             artworkURL: URL(string: s("art")), cardSong: song.isEmpty ? nil : song, cardArtist: cardArtist.isEmpty ? nil : cardArtist,
-            position: d("pos"), duration: d("dur"), paused: b("paused"), ended: b("ended"), isAd: b("ad"), isMusicSite: b("music"))
+            position: d("pos"), duration: d("dur"), paused: b("paused"), ended: b("ended"), isAd: b("ad"), isMusicSite: b("music"),
+            sampledAt: sampledAt)
     }
 
     private static func string(_ v: Any?) -> String? {
@@ -200,18 +270,24 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         return nil
     }
 
+    /// The error code decides first: -1743 is macOS refusing us Apple Events (its message mentions "Apple
+    /// events", which must not be mistaken for a JavaScript problem). Any other error that talks about
+    /// JavaScript, in its message or its details, is the browser's "Allow JavaScript from Apple Events"
+    /// switch being off.
     private func classify(_ error: NSError?) -> Failure {
         guard let error else { return .other("no reply from the browser") }
-        let text = error.localizedDescription
-        if text.localizedCaseInsensitiveContains("javascript") || text.localizedCaseInsensitiveContains("apple events") {
-            return .javascriptDisabled
-        }
         switch error.code {
         case -1743: return .denied
         case -1712: return .timeout
         case -600, -609: return .notRunning
-        default: return .other("\(error.code): \(text)")
+        default: break
         }
+        let text = error.localizedDescription
+        let details = error.userInfo.values.compactMap { $0 as? String }
+        if ([text] + details).contains(where: { $0.localizedCaseInsensitiveContains("javascript") }) {
+            return .javascriptDisabled
+        }
+        return .other("\(error.code): \(text)")
     }
 
     // MARK: SBApplicationDelegate

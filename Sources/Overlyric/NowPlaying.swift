@@ -3,7 +3,7 @@ import OverlyricCore
 
 /// What's playing, from whichever player is: the Spotify desktop app or a YouTube tab in a browser.
 /// When both play at once the one that started most recently wins; when neither plays, the last one
-/// heard from keeps the (paused) lyrics up.
+/// heard from keeps the (paused) lyrics up. Spotify is always watched; YouTube only when switched on.
 @MainActor
 final class NowPlaying {
     enum Source: Equatable { case spotify, youtube }
@@ -29,9 +29,13 @@ final class NowPlaying {
         }
     }
 
-    func start() { spotify.start(); youtube.start() }
+    /// Starts Spotify. YouTube starts only through `setYouTubeEnabled(true)`.
+    func start() { spotify.start() }
     func stop() { spotify.stop(); youtube.stop() }
     func setActive(_ value: Bool) { spotify.setActive(value); youtube.setActive(value) }
+
+    /// The user's YouTube switch: on reads the browsers from now on, off takes those lyrics down and reads nothing.
+    func setYouTubeEnabled(_ on: Bool) { youtube.setEnabled(on) }
 
     /// Encore: the current song again from the top, wherever it plays.
     func restart(trackID: String) {
@@ -52,10 +56,11 @@ final class NowPlaying {
     }
 
     /// True when a player is running but macOS hasn't let us read it, and nothing has been heard yet.
+    /// A browser only counts while the YouTube switch is on.
     var automationBlocked: Bool {
         guard snapshot.track == nil else { return false }
         return (spotify.isSpotifyRunning && spotify.automation == .denied)
-            || (youtube.isBrowserRunning && youtube.automation == .denied)
+            || (youtube.isEnabled && youtube.isBrowserRunning && youtube.automation == .denied)
     }
 
     private func changed(_ s: Source) {
