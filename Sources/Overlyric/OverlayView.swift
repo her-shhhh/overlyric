@@ -292,10 +292,14 @@ final class OverlayView: NSView {
     // MARK: Mouse gate
 
     /// Takes the mouse only while the pointer is over the words (and never when locked).
+    /// A drag in progress: the gate stays open even when the pointer runs ahead of the words (they stop
+    /// at a screen edge while the pointer carries on to the next monitor) — closing it would end the drag.
+    private var draggingNow = false
+
     func updateMouseGate() {
         guard let window else { return }
         let onScreen = window.convertToScreen(convert(interactiveRect, to: nil))
-        let ignore = locked || !window.isVisible || Date() < scrollThroughUntil || !onScreen.contains(NSEvent.mouseLocation)
+        let ignore = !draggingNow && (locked || !window.isVisible || Date() < scrollThroughUntil || !onScreen.contains(NSEvent.mouseLocation))
         if window.ignoresMouseEvents != ignore { window.ignoresMouseEvents = ignore }
     }
 
@@ -344,18 +348,23 @@ final class OverlayView: NSView {
                                       inMode: .eventTracking, dequeue: true) {
             let p = NSEvent.mouseLocation
             let dx = p.x - startMouse.x, dy = p.y - startMouse.y
-            if !dragging, hypot(dx, dy) >= 3 { dragging = true }
+            if !dragging, hypot(dx, dy) >= 3 { dragging = true; draggingNow = true }
             if dragging {
-                // The anchor follows the pointer, so a line change mid-drag lays out where the words are.
+                // The anchor follows the pointer, so a line change mid-drag lays out where the words are;
+                // the words go to the monitor the pointer is on.
+                panel.pointerScreen = NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) }
                 panel.setAnchor(NSPoint(x: words.midX + dx, y: words.maxY + dy + P), save: false)
                 relayout()
                 if shake.feed(x: Double(p.x), time: e.timestamp) { onShake?() }
             }
             if e.type == .leftMouseUp { break }
         }
+        panel.pointerScreen = nil
+        draggingNow = false
         guard dragging else { onClick?(); return }
         // Remember where the words visibly ended up (pushed back on screen if dragged past an edge).
         if let kept = wordsFrame { panel.setAnchor(NSPoint(x: kept.midX, y: kept.maxY + P), save: true) }
+        updateMouseGate()
     }
 
     /// ⌘ + scroll over the lyrics resizes them (scroll events reach an inactive window reliably). Plain
