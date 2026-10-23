@@ -284,8 +284,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         statusTitleItem.title = Self.clipped(status.title, to: 60)
         statusDetailItem.title = status.detail
         statusDetailItem.isHidden = status.detail.isEmpty
-        // The detail is "allow Automation…" exactly when Spotify can't be read and nothing has been heard yet.
-        let automationBlocked = controller.monitor.automation == .denied && controller.monitor.snapshot.track == nil
+        // The detail is "allow Automation…" exactly when a player can't be read and nothing has been heard yet.
+        let automationBlocked = controller.monitor.automationBlocked
         statusDetailItem.action = automationBlocked ? #selector(openAutomationSettings) : nil
         statusDetailItem.isEnabled = automationBlocked
 

@@ -2,13 +2,13 @@ import AppKit
 import QuartzCore
 import OverlyricCore
 
-/// Glue: Spotify state → lyrics fetch → playback clock → overlay style.
+/// Glue: player state (Spotify or a YouTube tab) → lyrics fetch → playback clock → overlay style.
 /// No periodic tick: a one-shot timer is armed for exactly the next line boundary and re-armed on every
 /// state change, so nothing runs while paused, hidden or idle. Time-driven styles animate on the GPU.
 @MainActor
 final class LyricsController {
     let panel = OverlayPanel()
-    let monitor = SpotifyMonitor()
+    let monitor = NowPlaying()
     private(set) lazy var sampler = BackgroundSampler(window: panel)
     private(set) lazy var eggs = EasterEggs(view: view)
     private let service = LyricsService()
@@ -57,7 +57,7 @@ final class LyricsController {
         view.onResizeEnded = { [weak self] size in self?.settings.fontSize = size }
         view.onClick = { [weak self] in
             guard let self else { return }
-            if !self.eggs.consumeClick() { Self.openSpotify() }
+            if !self.eggs.consumeClick() { self.monitor.openPlayer() }
         }
         view.onShake = { [weak self] in self?.eggs.shake() }
         eggs.enabled = settings.easterEggs
@@ -324,6 +324,8 @@ final class LyricsController {
             return
         }
         guard shouldShow, let key = currentTrackKey else { hide(); return }
+        // Most YouTube videos aren't songs: no lyrics there means no overlay, not a note.
+        if snap.track?.isFromYouTube == true, phase == .notFound || phase == .failed { hide(); return }
 
         switch phase {
         case .loading:
@@ -388,7 +390,7 @@ final class LyricsController {
     private func startFirstSong() {
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyMonitor.bundleID) != nil else { return }
         firstSongDue = Date().addingTimeInterval(600)
-        if !monitor.isSpotifyRunning { Self.openSpotify(activate: false) }
+        if !monitor.spotify.isSpotifyRunning { Self.openSpotify(activate: false) }
         playFirstSongIfDue()
     }
 
@@ -396,7 +398,7 @@ final class LyricsController {
     /// Spotify that has only just opened can miss the first request.
     private func playFirstSongIfDue() {
         guard let due = firstSongDue else { return }
-        let snap = monitor.snapshot
+        let snap = monitor.spotify.snapshot
         if snap.isPlaying, let track = snap.track, Onboarding.isFirstSong(track) {
             Log.spotify.notice("welcome song is playing")
             firstSongDue = nil
@@ -407,11 +409,11 @@ final class LyricsController {
             firstSongDue = nil
             return
         }
-        guard monitor.automation == .granted, monitor.isSpotifyRunning, Date() >= firstSongNextTry else { return }
+        guard monitor.spotify.automation == .granted, monitor.spotify.isSpotifyRunning, Date() >= firstSongNextTry else { return }
         firstSongTries += 1
         firstSongNextTry = Date().addingTimeInterval(3)
         Log.spotify.notice("playing the welcome song (try \(self.firstSongTries, privacy: .public))")
-        monitor.play(uri: Onboarding.firstSongURI)
+        monitor.spotify.play(uri: Onboarding.firstSongURI)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.1) { [weak self] in self?.playFirstSongIfDue() }
     }
 
@@ -430,23 +432,36 @@ final class LyricsController {
     // MARK: Menu status
 
     var statusText: StatusText {
-        guard monitor.isSpotifyRunning else { return StatusText(title: "Spotify isn't running", detail: "") }
+        let spotify = monitor.spotify, youtube = monitor.youtube
+        guard spotify.isSpotifyRunning || youtube.isBrowserRunning else {
+            return StatusText(title: "Nothing playing", detail: "Play a song in Spotify, or YouTube in Chrome")
+        }
         let snap = monitor.snapshot
         guard let track = snap.track else {
-            switch monitor.automation {
-            case .denied:
-                return StatusText(title: "Nothing playing", detail: "Allow Automation for Spotify, or press play to sync")
-            case .unavailable(let msg):
-                return StatusText(title: "Nothing playing", detail: "Can't read Spotify (\(msg))")
-            default:
-                return StatusText(title: "Nothing playing", detail: "")
+            var notes: [String] = []
+            if spotify.isSpotifyRunning {
+                switch spotify.automation {
+                case .denied: notes.append("Allow Automation for Spotify, or press play to sync")
+                case .unavailable(let msg): notes.append("Can't read Spotify (\(msg))")
+                default: break
+                }
             }
+            if youtube.isBrowserRunning {
+                switch youtube.automation {
+                case .denied: notes.append("Allow Automation for your browser to read YouTube")
+                case .javascriptDisabled: notes.append("YouTube: in Chrome turn on View › Developer › Allow JavaScript from Apple Events")
+                case .unavailable(let msg): notes.append("Can't read the browser (\(msg))")
+                default: break
+                }
+            }
+            return StatusText(title: "Nothing playing", detail: notes.joined(separator: " · "))
         }
         let icon = snap.isPlaying ? "▶" : "⏸"
-        let title = "\(icon)  \(track.name) — \(track.artist)"
+        let via = track.isFromYouTube ? "  (YouTube\(youtube.browserName.map { " in \($0)" } ?? ""))" : ""
+        let title = "\(icon)  \(track.name)\(track.artist.isEmpty ? "" : " — \(track.artist)")\(via)"
         let detail: String
         if !track.isSong {
-            detail = track.isAd ? "Advertisement" : "Podcast episode — no lyrics"
+            detail = track.isAd ? "Advertisement" : track.isFromYouTube ? "Too long to be a song — no lyrics" : "Podcast episode — no lyrics"
         } else {
             switch phase {
             case .loading: detail = "Finding lyrics…"

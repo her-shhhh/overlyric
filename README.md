@@ -1,6 +1,6 @@
 # Overlyric
 
-*Sing along to anything on Spotify — without knowing a single word.*
+*Sing along to anything on Spotify or YouTube — without knowing a single word.*
 
 **[⬇️ Download the latest version](https://github.com/her-shhhh/overlyric/releases/latest)** — grab the `.dmg`, then open the file called *"Read This or Hum Forever"*.
 
@@ -16,7 +16,7 @@ lyrics float right on my screen. My colleagues are thrilled.
 
 ## What it is
 
-A tiny Mac menu-bar app that floats the lyrics of whatever Spotify is playing on top of everything —
+A tiny Mac menu-bar app that floats the lyrics of whatever Spotify (or YouTube in Chrome) is playing on top of everything —
 big, clean, Instagram-story style, perfectly in time. Only the words show; the rest is see-through.
 
 - **On top of everything**, on every Space and over full-screen apps.
@@ -26,6 +26,8 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
   the album artwork.
 - **Drag** the lyrics anywhere (right up to the screen edges), **⌘ + scroll** on them to resize,
   **click** them to jump to Spotify, **right-click** for the menu.
+- **YouTube too** — a song playing in a Chrome (Brave, Edge, Arc) tab, on youtube.com or music.youtube.com, gets
+  the same floating lyrics (see below).
 - No Spotify login, no account, no subscription, no nonsense.
 
 ## For friends: install
@@ -45,7 +47,21 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
 4. Play a song in the **Spotify desktop app**. The first time, click **Allow** when macOS asks whether
    Overlyric may control Spotify — that's how it reads the song and its position.
 
-Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app.
+Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app, or YouTube in a Chromium browser.
+
+### YouTube in the browser
+
+Play a song on YouTube or YouTube Music in Chrome (also Brave, Edge, Arc, Vivaldi — anything Chromium) and the
+lyrics come up, in any tab, front or back. Two one-time switches:
+
+1. macOS asks whether Overlyric may control Chrome: click **Allow**.
+2. In Chrome's menu bar, turn on **View › Developer › Allow JavaScript from Apple Events**. That's how Overlyric
+   asks the tab where the video is up to; without it, the mic menu tells you what to switch on.
+
+It reads the video's title, channel and YouTube's own "Music" card, tries the likely title/artist splits at
+lrclib and keeps the synced lyrics whose length matches the video. Official audio, lyric videos and YouTube Music
+match best; a music video with a long cinematic intro usually won't (the timing would be off, so nothing shows).
+Videos that aren't songs show nothing at all. If Spotify and YouTube both play, whichever started last wins.
 
 ### About the warnings (why they appear, and why it's fine)
 
