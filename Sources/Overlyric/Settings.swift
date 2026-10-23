@@ -47,6 +47,7 @@ final class Settings {
         static let easterEggs = "overlyric.easterEggs"
         static let timing = "overlyric.timing"
         static let romanized = "overlyric.preferRomanized"
+        static let youtube = "overlyric.youtubeInBrowser"
     }
 
     var enabled: Bool {
@@ -126,6 +127,13 @@ final class Settings {
     var preferRomanized: Bool {
         get { d.object(forKey: Key.romanized) as? Bool ?? false }
         set { d.set(newValue, forKey: Key.romanized); notify() }
+    }
+
+    /// Lyrics for a song playing on YouTube in a browser tab (Chrome, Dia, Arc, Brave, Edge…). Off until
+    /// turned on: reading a browser needs macOS's Automation permission and polls it while it runs.
+    var youtubeInBrowser: Bool {
+        get { d.bool(forKey: Key.youtube) }
+        set { d.set(newValue, forKey: Key.youtube); notify() }
     }
 
     var clickThrough: Bool {

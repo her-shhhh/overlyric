@@ -35,17 +35,22 @@ readable random colour generator), `ArtworkColor`, `ShakeDetector`, `LyricsDiskC
 position; full poll: + track; escalates once on any disagreement). Spotify posts no notification on seek,
 so the light poll catches seeks and drift (> 0.4 s). Reads target Spotify's pid so they can never launch it.
 
-**YouTube** — `YouTubeMonitor` polls (no push from a browser: 1 s while playing, 2 s otherwise, 20 s with the
-overlay off) through `BrowserScripter`: ScriptingBridge to any running Chromium browser, one Apple Event per
-window for its tabs' URLs, then a page script (`execute javascript`, needs the browser's "Allow JavaScript from
-Apple Events") in each YouTube tab reads the `<video>` (position, duration, paused/buffering, ad) and the
-Media Session metadata (title, channel, artwork) plus YouTube's "Music" card. A paused tab only counts if it's
-the one that was playing. `YouTubeTitleParser` (core) strips the usual title noise and yields ordered
-(title, artist) guesses, carried as `SpotifyTrack.alternates`; `NowPlaying` merges both monitors (the player
-that started playing last wins; a paused one keeps its lyrics up). A YouTube video with no lyrics shows nothing.
+**YouTube** — off until `Settings.youtubeInBrowser` is on: no browser is read and no Automation prompt appears
+before that. Then `YouTubeMonitor` polls (no push from a browser: 1 s while playing, 2 s while our tab is paused,
+5 s when no YouTube tab is open, 20 s with the overlay off) through `BrowserScripter`: ScriptingBridge to any
+running Chromium browser (Chrome, Dia, Arc, Brave, Edge, Vivaldi), one Apple Event per window for its tabs'
+URLs, then a page script (`execute javascript`; Chrome-family browsers need "Allow JavaScript from Apple Events")
+in each YouTube tab reads the `<video>` (position, duration, paused/buffering, ad) and the Media Session metadata
+(title, channel, artwork) plus YouTube's "Music" card. A paused tab only counts if it's the one that was playing;
+a tab whose video isn't ready (duration 0) is skipped; a read that times out keeps the last state (cleared after
+three failures in a row); Automation denied / JavaScript off are told apart by error code first, then message.
+`YouTubeTitleParser` (core) strips the usual title noise and yields ordered (title, artist) guesses (at most
+four), carried as `SpotifyTrack.alternates`; `NowPlaying` merges both monitors (the player that started playing
+last wins; a paused one keeps its lyrics up). A YouTube video shows nothing until its lyrics are found.
 
-**Lyrics** — `LyricsService` tries exact `/api/get` variants then `/api/search` for each guess in turn (the first
-thoroughly, the rest with a shorter chain), sequentially with 250 ms
+**Lyrics** — `LyricsService` tries exact `/api/get` variants then `/api/search` for each guess in turn (at most
+three for a video: the first thoroughly, the rest with a short chain; a video's search hit must also carry the
+guessed title, since a duration alone would pick any song of that length), sequentially with 250 ms
 spacing, honouring 429/503 Retry-After, 15 s per request. Results go to memory and to
 `~/Library/Caches/com.harsh.overlyric/lyrics` (found lyrics forever, "not found" for 2 days). Network
 failures are retried by the controller at 3, 8, 20, 45 and 90 s while the song plays (♪ meanwhile).

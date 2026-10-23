@@ -67,14 +67,17 @@ final class LyricsService {
 
     // MARK: Lookup chain (see docs/ARCHITECTURE.md § LyricsService)
 
+    /// How many (title, artist) readings of a YouTube video are tried. The first is tried thoroughly, the
+    /// rest with a short chain, so a reading that's plain wrong costs a few requests, not dozens.
+    private static let maxGuesses = 3
+
     /// The parsed lyrics and the raw LRC text they came from (for the disk cache).
-    /// A Spotify track is one (title, artist); a YouTube video brings several guesses, tried in order —
-    /// the first one thoroughly, the rest with a shorter chain, so a guess that's plain wrong costs little.
+    /// A Spotify track is one (title, artist); a YouTube video brings a few guesses, tried in order.
     private func resolve(_ t: SpotifyTrack) async throws -> (SyncedLyrics?, String?) {
         let duration: TimeInterval? = t.duration > 0 ? t.duration : nil
         let album: String? = t.album.isEmpty ? nil : t.album
         var seen = Set<String>()
-        for (i, guess) in t.guesses.enumerated() {
+        for (i, guess) in t.guesses.prefix(t.isFromYouTube ? Self.maxGuesses : 1).enumerated() {
             if let hit = try await resolve(guess, album: i == 0 ? album : nil, duration: duration,
                                            thorough: i == 0, fromYouTube: t.isFromYouTube, seen: &seen) {
                 return hit
@@ -83,8 +86,11 @@ final class LyricsService {
         return (nil, nil)
     }
 
+    /// One guess through the chain. For a video, a search hit must also carry the guessed title: on a
+    /// video's duration alone the matcher would hand back any song of that length.
     private func resolve(_ g: TrackGuess, album: String?, duration: TimeInterval?, thorough: Bool, fromYouTube: Bool,
                          seen: inout Set<String>) async throws -> (SyncedLyrics, String)? {
+        let romanized = Settings.shared.preferRomanized
         // YouTube artists come as "A x B", "A ft. B"; Spotify's are comma-joined.
         let primary = fromYouTube ? YouTubeTitleParser.primaryArtist(g.artist) : TrackNameCleaner.primaryArtist(g.artist)
         let titles = TrackNameCleaner.titleVariants(g.name)
@@ -93,18 +99,26 @@ final class LyricsService {
         // Stage A — exact lookups, cheapest first. lrclib already folds case/punctuation/diacritics.
         var attempts: [(track: String, artist: String, album: String?)] = []
         if !g.artist.isEmpty {
-            attempts = [(g.name, g.artist, album), (g.name, g.artist, nil), (g.name, primary, nil), (cleaned, primary, nil)]
             if thorough {
-                attempts.append((cleaned, g.artist, nil))
+                attempts = [(g.name, g.artist, album), (g.name, g.artist, nil), (g.name, primary, nil),
+                            (cleaned, primary, nil), (cleaned, g.artist, nil)]
                 for title in titles.dropFirst().dropLast() { attempts.append((title, primary, nil)) }
+            } else {
+                attempts = [(g.name, g.artist, nil), (cleaned, primary, nil)]
             }
         }
         for a in attempts {
             let key = "get|\(a.track)|\(a.artist)|\(a.album ?? "")".lowercased()
             guard seen.insert(key).inserted else { continue }
-            if let rec = try await get(track: a.track, artist: a.artist, album: a.album, duration: duration),
-               rec.hasSyncedLyrics, let hit = Self.shifted(rec, toFit: duration, fromYouTube: fromYouTube) {
-                return hit
+            if var rec = try await get(track: a.track, artist: a.artist, album: a.album, duration: duration), rec.hasSyncedLyrics {
+                // `/get` hands back one record. If it isn't romanized, see whether a Latin one exists too.
+                if romanized, !rec.isLatinScript,
+                   let latin = LyricsMatcher.best(from: try await search(track: a.track, artist: a.artist),
+                                                  duration: duration, title: a.track, preferLatin: true), latin.isLatinScript {
+                    Log.lyrics.notice("romanized version found for \(a.track, privacy: .public)")
+                    rec = latin
+                }
+                if let raw = rec.syncedLyrics, let parsed = LRCParser.parse(raw) { return (parsed, raw) }
             }
         }
 
@@ -113,35 +127,18 @@ final class LyricsService {
         var searches: [(track: String?, artist: String?, q: String?)] = []
         if !primary.isEmpty { searches.append((cleaned, primary, nil)) }
         if thorough || primary.isEmpty { searches.append((cleaned, nil, nil)) }
-        searches.append((nil, nil, primary.isEmpty ? cleaned : "\(cleaned) \(primary)"))
+        if thorough { searches.append((nil, nil, primary.isEmpty ? cleaned : "\(cleaned) \(primary)")) }
         for s in searches where candidates.isEmpty {
             let key = "search|\(s.track ?? "")|\(s.artist ?? "")|\(s.q ?? "")".lowercased()
             guard seen.insert(key).inserted else { continue }
             candidates = try await search(track: s.track, artist: s.artist, q: s.q)
         }
-        if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned),
-           let hit = Self.shifted(best, toFit: duration, fromYouTube: fromYouTube) {
-            return hit
+        if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned,
+                                         preferLatin: romanized, requireTitle: fromYouTube),
+           let raw = best.syncedLyrics, let parsed = LRCParser.parse(raw) {
+            return (parsed, raw)
         }
         return nil
-    }
-
-    /// The record's lyrics, parsed, with the raw LRC for the cache. A YouTube video that runs longer than
-    /// the record (a label intro, a cinematic opening) gets the lyrics delayed by the difference — the best
-    /// guess without hearing it. Baked in as an `[offset:]` tag
-    /// so the cached copy (one per video) carries it.
-    private static func shifted(_ rec: LRCLIBRecord, toFit duration: TimeInterval?, fromYouTube: Bool) -> (SyncedLyrics, String)? {
-        guard var raw = rec.syncedLyrics else { return nil }
-        if fromYouTube, let duration, let recorded = rec.duration, recorded > 0 {
-            let extra = duration - recorded
-            if abs(extra) > 1.5 {
-                // LRC convention: a positive offset shifts the lines earlier, so a longer video wants a negative one.
-                raw = "[offset:\(Int((-extra * 1000).rounded()))]\n" + raw
-                Log.lyrics.notice("video is \(String(format: "%.1f", extra), privacy: .public)s longer than the lyrics' track; shifting the lyrics by that")
-            }
-        }
-        guard let parsed = LRCParser.parse(raw) else { return nil }
-        return (parsed, raw)
     }
 
     // MARK: HTTP

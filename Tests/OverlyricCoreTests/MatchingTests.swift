@@ -87,6 +87,18 @@ import Testing
     }
 }
 
+@Suite struct RequiredTitleTests {
+    @Test func aVideoLookupNeedsTheTitleToo() {
+        let other = LRCLIBRecord(id: 1, trackName: "Something Else", duration: 180, syncedLyrics: "[00:01.00] la")
+        let right = LRCLIBRecord(id: 2, trackName: "Yellow", duration: 184, syncedLyrics: "[00:01.00] look at the stars")
+        // On duration alone the closer record wins; for a video the title must match as well.
+        #expect(LyricsMatcher.best(from: [other, right], duration: 180, title: "Yellow")?.id == 1)
+        #expect(LyricsMatcher.best(from: [other, right], duration: 180, title: "Yellow", requireTitle: true)?.id == 2)
+        #expect(LyricsMatcher.best(from: [other], duration: 180, title: "Yellow", requireTitle: true) == nil)
+        #expect(LyricsMatcher.best(from: [other, right], duration: nil, title: "Yellow", requireTitle: true)?.id == 2)
+    }
+}
+
 @Suite struct RomanizedPreferenceTests {
     @Test func detectsLatinScript() {
         #expect(LyricsMatcher.isLatinScript("[00:07.22] Adhuri nahi, main teri hoon"))

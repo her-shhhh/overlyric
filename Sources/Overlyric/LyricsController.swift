@@ -86,6 +86,7 @@ final class LyricsController {
         }
         monitor.setActive(settings.enabled)
         monitor.start()
+        monitor.setYouTubeEnabled(settings.youtubeInBrowser)
         if Onboarding.takeWelcome() {
             welcomeUntil = Date().addingTimeInterval(9)
             DispatchQueue.main.asyncAfter(deadline: .now() + 9.1) { [weak self] in
@@ -148,6 +149,7 @@ final class LyricsController {
         eggs.enabled = settings.easterEggs
         view.locked = settings.clickThrough
         monitor.setActive(settings.enabled)
+        monitor.setYouTubeEnabled(settings.youtubeInBrowser)
         refresh()
         updateColorSource()
     }
@@ -324,8 +326,9 @@ final class LyricsController {
             return
         }
         guard shouldShow, let key = currentTrackKey else { hide(); return }
-        // Most YouTube videos aren't songs: no lyrics there means no overlay, not a note.
-        if snap.track?.isFromYouTube == true, phase == .notFound || phase == .failed { hide(); return }
+        // Most YouTube videos aren't songs: nothing shows for one until its lyrics are actually found
+        // (no ♪ while looking, no "no lyrics" note).
+        if snap.track?.isFromYouTube == true, phase != .loaded { hide(); return }
 
         switch phase {
         case .loading:
@@ -433,8 +436,9 @@ final class LyricsController {
 
     var statusText: StatusText {
         let spotify = monitor.spotify, youtube = monitor.youtube
-        guard spotify.isSpotifyRunning || youtube.isBrowserRunning else {
-            return StatusText(title: "Nothing playing", detail: "Play a song in Spotify, or YouTube in Chrome")
+        let browser = youtube.isEnabled && youtube.isBrowserRunning
+        guard spotify.isSpotifyRunning || browser else {
+            return StatusText(title: "Nothing playing", detail: youtube.isEnabled ? "Play a song in Spotify, or YouTube in your browser" : "")
         }
         let snap = monitor.snapshot
         guard let track = snap.track else {
@@ -446,11 +450,12 @@ final class LyricsController {
                 default: break
                 }
             }
-            if youtube.isBrowserRunning {
+            if browser {
+                let name = youtube.browserName ?? "your browser"
                 switch youtube.automation {
-                case .denied: notes.append("Allow Automation for your browser to read YouTube")
-                case .javascriptDisabled: notes.append("YouTube: in Chrome turn on View › Developer › Allow JavaScript from Apple Events")
-                case .unavailable(let msg): notes.append("Can't read the browser (\(msg))")
+                case .denied: notes.append("Allow Automation for \(name) to read YouTube")
+                case .javascriptDisabled: notes.append("In \(name) turn on View › Developer › Allow JavaScript from Apple Events")
+                case .unavailable(let msg): notes.append("Can't read \(name) (\(msg))")
                 default: break
                 }
             }

@@ -47,14 +47,17 @@ public enum LyricsMatcher {
     /// ≤2 s (lrclib's own tolerance) → ≤5 s (CD vs streaming masters) → ≤15 s but only with an exact
     /// normalised title match. Anything further off is a different edit and would drift out of sync.
     /// Ties resolve to the lowest id, mirroring `/api/get`. With `preferLatin`, a romanized record within
-    /// the first two tiers (or the third) wins over a non-Latin one there.
+    /// the first two tiers (or the third) wins over a non-Latin one there. With `requireTitle`, every tier
+    /// needs the exact normalised title (for a lookup whose duration can't be trusted to identify the song,
+    /// such as a YouTube video).
     public static func best(from candidates: [LRCLIBRecord], duration: TimeInterval?, title: String? = nil,
-                            preferLatin: Bool = false) -> LRCLIBRecord? {
+                            preferLatin: Bool = false, requireTitle: Bool = false) -> LRCLIBRecord? {
+        let wanted = title.map(normalize)
         let synced = candidates.filter(\.hasSyncedLyrics)
+            .filter { !requireTitle || (wanted != nil && normalize($0.trackName ?? "") == wanted!) }
         guard let duration, duration > 0 else {
             return (preferLatin ? synced.first(where: \.isLatinScript) : nil) ?? synced.first
         }
-        let wanted = title.map(normalize)
         func pick(within tol: TimeInterval, strictTitle: Bool, latinOnly: Bool = false) -> LRCLIBRecord? {
             synced
                 .filter { abs(($0.duration ?? -1_000) - duration) <= tol }

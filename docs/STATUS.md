@@ -1,4 +1,33 @@
-# Overlyric — status (as of 2026-10-23, version 1.3.2)
+# Overlyric — status (as of 2026-10-23, version 1.4.0)
+
+## 1.4.0 (2026-10-23)
+Four features from the first outside contributor (GitHub mohdzaryab, PRs #2–#5), reviewed and reworked where
+needed:
+- **Lyrics can be dragged onto another monitor** (#2). The mouse gate used to close mid-drag when the words
+  stopped at a screen edge while the pointer carried on; it now stays open for the whole drag and the words
+  follow the monitor the pointer is on. Verified by code reading and the contributor's three-display test
+  (one display here).
+- **Lyrics Timing ▸** (#3): nudge a song's words later or earlier by ½ s or 2 s, remembered per song
+  (`overlyric.timing`). Applied at once through the settings refresh. Known nits: no cap on the nudge; the
+  encore offer uses the nudged clock.
+- **Prefer Romanized Lyrics** (#4): a Latin-script lrclib record wins when one sits within the length
+  tolerance. Shipped **off by default** (the PR had it on): on by default would have flipped every Hindi/Urdu
+  song with a romanized twin to Latin letters, and the per-preference cache key re-fetches every cached song
+  once. 2 tests.
+- **YouTube in Browser** (#5, reworked): lyrics for a song playing on youtube.com or music.youtube.com in a
+  Chrome, Dia, Arc, Brave, Edge or Vivaldi tab, read through ScriptingBridge + a page script
+  (`BrowserScripter`, `YouTubeMonitor`, `NowPlaying`, `YouTubeTitleParser`). Changes from the PR as submitted:
+  off by default behind a menu switch (`Settings.youtubeInBrowser`; nothing is read and no Automation prompt
+  appears until it's on); Dia added (same `execute javascript` command as Chrome); error codes classified
+  before messages (a denial was read as the JavaScript hint); a slow or failed poll keeps the last state
+  instead of blanking the lyrics (cleared after three in a row); a tab whose video isn't ready is skipped;
+  polling 1 s / 2 s / 5 s (no YouTube tab) / 20 s (overlay off); at most three (title, artist) readings per
+  video and a search hit must carry the guessed title (a duration alone picked any song of that length);
+  the automatic `[offset:]` shift is gone (Lyrics Timing is the per-video fix); parser: apostrophes aren't
+  quotes, "Video Games" and "Hindi Zahra" survive, band names with "&" stay whole, four guesses at most;
+  a video shows nothing until its lyrics are found. Status copy names the browser.
+- Verified: VERIFY_PLACEHOLDER
+
 
 ## 1.3.2 (2026-10-23)
 - **Right-to-left lyrics read the right way in Karaoke and Glide.** Karaoke's sweep and Glide's tape were

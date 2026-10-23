@@ -40,6 +40,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     /// A little secret: holding ⌥ turns "Launch at Login" into this switch.
     private let eggsItem = NSMenuItem(title: "Easter Eggs", action: #selector(toggleEggs), keyEquivalent: "")
     private let romanizedItem = NSMenuItem(title: "Prefer Romanized Lyrics", action: #selector(toggleRomanized), keyEquivalent: "")
+    private let youtubeItem = NSMenuItem(title: "YouTube in Browser", action: #selector(toggleYouTube), keyEquivalent: "")
 
     init(controller: LyricsController) {
         self.controller = controller
@@ -154,6 +155,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         romanizedItem.target = self
         Self.setTitle(romanizedItem, "Prefer Romanized Lyrics", subtitle: "Latin letters when a song has both")
         menu.addItem(romanizedItem)
+        youtubeItem.target = self
+        Self.setTitle(youtubeItem, "YouTube in Browser", subtitle: "Lyrics for songs playing in a Chrome, Dia or Arc tab")
+        menu.addItem(youtubeItem)
         lockItem.target = self
         menu.addItem(lockItem)
         let resetPos = NSMenuItem(title: "Reset Position", action: #selector(resetPosition), keyEquivalent: "")
@@ -278,6 +282,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         toggleItem.state = settings.enabled ? .on : .off
         lockItem.state = settings.clickThrough ? .on : .off
         romanizedItem.state = settings.preferRomanized ? .on : .off
+        youtubeItem.state = settings.youtubeInBrowser ? .on : .off
         launchItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
         let status = controller.statusText
@@ -387,6 +392,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func toggleEnabled() { settings.enabled.toggle() }
     @objc private func toggleEggs() { settings.easterEggs.toggle() }
     @objc private func toggleRomanized() { settings.preferRomanized.toggle() }
+    @objc private func toggleYouTube() { settings.youtubeInBrowser.toggle() }
     @objc private func toggleLock() { settings.clickThrough.toggle() }
 
     @objc private func pickStyle(_ sender: NSMenuItem) {
