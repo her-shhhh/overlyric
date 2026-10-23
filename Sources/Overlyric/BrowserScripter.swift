@@ -58,6 +58,10 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
     private let queue = DispatchQueue(label: "overlyric.browser.bridge", qos: .utility)
     private var apps: [pid_t: SBApplication] = [:]
     private var lastError: NSError?
+    /// Each browser's scripting dictionary (the sdef in its bundle), read once. It decides whether a command
+    /// or property may be sent: a scripting object says no to `responds(to:)` for everything it answers by
+    /// forwarding, and sending a command the browser doesn't know raises.
+    private var dictionaries: [String: String] = [:]
 
     private static let watchHosts = ["youtube.com", "music.youtube.com", "www.youtube.com", "m.youtube.com"]
 
@@ -120,13 +124,13 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
             if let found = self.locate(tab) {
                 switch tab.bundleID {
                 case Self.diaBundleID:
-                    self.send("focus", to: found.tab)
+                    self.send("focus", to: found.tab, in: tab.bundleID)
                 case Self.arcBundleID:
-                    self.send("select", to: found.tab)
-                    self.set(1, forKey: "index", on: found.window)
+                    self.send("select", to: found.tab, in: tab.bundleID)
+                    self.set(1, forKey: "index", named: "index", on: found.window, in: tab.bundleID)
                 default:
-                    self.set(found.tabIndex + 1, forKey: "activeTabIndex", on: found.window)
-                    self.set(1, forKey: "index", on: found.window)
+                    self.set(found.tabIndex + 1, forKey: "activeTabIndex", named: "active tab index", on: found.window, in: tab.bundleID)
+                    self.set(1, forKey: "index", named: "index", on: found.window, in: tab.bundleID)
                 }
             }
             DispatchQueue.main.async {
@@ -165,26 +169,46 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         return Self.string(result?.takeUnretainedValue())
     }
 
-    /// Sends a command that takes no parameters (Dia's `focus`, Arc's `select`) if the browser knows it.
-    private func send(_ command: String, to object: SBObject) {
-        let selector = NSSelectorFromString(command)
-        guard object.responds(to: selector) else {
+    /// The browser's scripting dictionary, from the sdef named in its Info.plist (empty if there is none).
+    private func dictionary(for bundleID: String) -> String {
+        if let text = dictionaries[bundleID] { return text }
+        var text = ""
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID), let bundle = Bundle(url: url),
+           let name = bundle.object(forInfoDictionaryKey: "OSAScriptingDefinition") as? String {
+            let base = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            if let sdef = bundle.url(forResource: base, withExtension: ext.isEmpty ? "sdef" : ext),
+               let contents = try? String(contentsOf: sdef, encoding: .utf8) {
+                text = contents
+            }
+        }
+        dictionaries[bundleID] = text
+        return text
+    }
+
+    /// Whether the browser's dictionary defines a command (or a property) of that name.
+    private func knows(_ kind: String, _ name: String, in bundleID: String) -> Bool {
+        dictionary(for: bundleID).contains("<\(kind) name=\"\(name)\"")
+    }
+
+    /// Sends a command that takes no parameters (Dia's `focus`, Arc's `select`) if the browser's dictionary has it.
+    private func send(_ command: String, to object: SBObject, in bundleID: String) {
+        guard knows("command", command, in: bundleID) else {
             Log.browser.notice("the browser has no '\(command, privacy: .public)' command; only bringing it forward")
             return
         }
         lastError = nil
-        _ = object.perform(selector)
+        _ = object.perform(NSSelectorFromString(command))
         if let err = lastError {
             Log.browser.notice("'\(command, privacy: .public)' failed: \(err.code, privacy: .public) \(err.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Sets a scripting property if the browser has it. Setting a key the browser doesn't know would raise
-    /// (and take the app down), so the setter is checked first.
-    private func set(_ value: Int, forKey key: String, on object: SBObject) {
-        let setter = NSSelectorFromString("set\(key.prefix(1).uppercased())\(key.dropFirst()):")
-        guard object.responds(to: setter) else {
-            Log.browser.notice("the browser has no '\(key, privacy: .public)' property; only bringing it forward")
+    /// Sets a scripting property (`key` is its Cocoa key, `named` its name in the dictionary) if the browser's
+    /// dictionary has it. Setting a key the browser doesn't know would raise (and take the app down).
+    private func set(_ value: Int, forKey key: String, named name: String, on object: SBObject, in bundleID: String) {
+        guard knows("property", name, in: bundleID) else {
+            Log.browser.notice("the browser has no '\(name, privacy: .public)' property; only bringing it forward")
             return
         }
         lastError = nil
