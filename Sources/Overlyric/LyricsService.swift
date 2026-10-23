@@ -36,7 +36,8 @@ final class LyricsService {
     }
 
     func lyrics(for track: SpotifyTrack) async -> Result<SyncedLyrics?, LookupError> {
-        let key = Self.cacheKey(for: track)
+        // Each preference has its own cache: switching it looks the song up again.
+        let key = Self.cacheKey(for: track) + (Settings.shared.preferRomanized ? "|latin" : "")
         if let cached = cache[key] { return .success(cached) }
         switch disk.load(key) {
         case .found(let lrc)?:
@@ -88,9 +89,15 @@ final class LyricsService {
         for a in attempts {
             let key = "\(a.track)|\(a.artist)|\(a.album ?? "")".lowercased()
             guard seen.insert(key).inserted else { continue }
-            if let rec = try await get(track: a.track, artist: a.artist, album: a.album, duration: duration),
-               rec.hasSyncedLyrics, let raw = rec.syncedLyrics, let parsed = LRCParser.parse(raw) {
-                return (parsed, raw)
+            if var rec = try await get(track: a.track, artist: a.artist, album: a.album, duration: duration), rec.hasSyncedLyrics {
+                // `/get` hands back one record. If it isn't romanized, see whether a Latin one exists too.
+                if Settings.shared.preferRomanized, !rec.isLatinScript,
+                   let latin = LyricsMatcher.best(from: try await search(track: a.track, artist: a.artist),
+                                                  duration: duration, title: a.track, preferLatin: true), latin.isLatinScript {
+                    Log.lyrics.notice("romanized version found for \(a.track, privacy: .public)")
+                    rec = latin
+                }
+                if let raw = rec.syncedLyrics, let parsed = LRCParser.parse(raw) { return (parsed, raw) }
             }
         }
 
@@ -98,7 +105,7 @@ final class LyricsService {
         var candidates = try await search(track: cleaned, artist: primary)
         if candidates.isEmpty { candidates = try await search(track: cleaned, artist: nil) }
         if candidates.isEmpty { candidates = try await search(q: "\(cleaned) \(primary)") }
-        if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned),
+        if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned, preferLatin: Settings.shared.preferRomanized),
            let raw = best.syncedLyrics, let parsed = LRCParser.parse(raw) {
             return (parsed, raw)
         }

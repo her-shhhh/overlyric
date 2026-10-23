@@ -86,3 +86,22 @@ import Testing
         #expect(r.hasSyncedLyrics == false && r.instrumental == true)
     }
 }
+
+@Suite struct RomanizedPreferenceTests {
+    @Test func detectsLatinScript() {
+        #expect(LyricsMatcher.isLatinScript("[00:07.22] Adhuri nahi, main teri hoon"))
+        #expect(!LyricsMatcher.isLatinScript("[00:07.22] अधूरी नहीं, मैं तेरी हूँ"))
+        #expect(LyricsMatcher.isLatinScript("[00:01.00] Señorita, c'est la vie"))
+        #expect(LyricsMatcher.isLatinScript("[00:01.00] ♪"))
+    }
+
+    @Test func prefersARomanizedRecordAtAMatchingLength() {
+        let hindi = LRCLIBRecord(id: 1, trackName: "Beqadra", duration: 182, syncedLyrics: "[00:07.22] अधूरी नहीं")
+        let latin = LRCLIBRecord(id: 2, trackName: "Beqadra", duration: 185, syncedLyrics: "[00:07.22] Adhuri nahi")
+        #expect(LyricsMatcher.best(from: [hindi, latin], duration: 182, title: "Beqadra")?.id == 1)
+        #expect(LyricsMatcher.best(from: [hindi, latin], duration: 182, title: "Beqadra", preferLatin: true)?.id == 2)
+        // Not at any price: a romanized record of a different edit loses to the right length.
+        let far = LRCLIBRecord(id: 3, trackName: "Beqadra", duration: 210, syncedLyrics: "[00:07.22] Adhuri nahi")
+        #expect(LyricsMatcher.best(from: [hindi, far], duration: 182, title: "Beqadra", preferLatin: true)?.id == 1)
+    }
+}

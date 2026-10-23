@@ -46,6 +46,7 @@ final class Settings {
         static let font = "overlyric.font"
         static let easterEggs = "overlyric.easterEggs"
         static let timing = "overlyric.timing"
+        static let romanized = "overlyric.preferRomanized"
     }
 
     var enabled: Bool {
@@ -119,6 +120,12 @@ final class Settings {
         if all.count > 500 { all = Dictionary(uniqueKeysWithValues: Array(all.suffix(400))) }   // the odd stale song
         d.set(all, forKey: Key.timing)
         notify()
+    }
+
+    /// When a song has lyrics in both its own script and Latin letters, take the Latin ones.
+    var preferRomanized: Bool {
+        get { d.object(forKey: Key.romanized) as? Bool ?? false }
+        set { d.set(newValue, forKey: Key.romanized); notify() }
     }
 
     var clickThrough: Bool {
