@@ -1,4 +1,4 @@
-Overlyric {{VERSION}} - sing along to anything on Spotify
+Overlyric {{VERSION}} - sing along to anything on Spotify or YouTube
 
 
 HOW THIS HAPPENED
@@ -17,15 +17,16 @@ float right on my screen. My colleagues are thrilled.
 
 WHAT IT IS
 
-A tiny Mac app that floats the lyrics of whatever Spotify is playing
+A tiny Mac app that floats the lyrics of whatever Spotify (or YouTube
+in Chrome) is playing
 on top of everything you do: big, clean, Instagram-story style, in
 time with the song. Only the words show up; the rest is see-through,
 so your work stays visible (your excuses for not working: also
 visible). No login, no account, no subscription, no nonsense.
 
 You need: macOS {{MIN_OS}} or later (Apple menu > About This Mac
-tells you), the Spotify desktop app, and the courage to sing in
-front of your colleagues.
+tells you), the Spotify desktop app or YouTube open in Chrome, and
+the courage to sing in front of your colleagues.
 
 
 SET IT UP (2 minutes, once)
@@ -66,7 +67,17 @@ USE IT
 
 - Drag the lyrics anywhere you like. Hold Cmd and scroll on them to
   make them bigger (for the chorus) or smaller (for meetings).
-- Click the lyrics to jump to Spotify. Right-click them for the menu.
+- Click the lyrics to jump to Spotify (or the YouTube tab). Right-click
+  them for the menu.
+- YouTube in Chrome (also Brave, Edge, Arc): play a song in any tab
+  and the lyrics come up, if the video is a song and lrclib.net has
+  it in time. Official audio, lyric videos and YouTube Music match
+  best; a music video with a long cinematic intro may not. Videos
+  that aren't songs simply show nothing. Two things to allow, once:
+  macOS asks whether Overlyric may control Chrome (click Allow), and
+  in Chrome's menu bar turn on View > Developer > Allow JavaScript
+  from Apple Events (that's how it reads where the video is up to).
+  Without it the mic menu tells you what to switch on.
 - Lyrics Style: 10 looks - Dynamic, Jump, Typewriter, Karaoke, Cube
   and more. Try them all. Pick a favourite. Change your mind every
   song.
@@ -92,10 +103,11 @@ ABOUT THE SCARY WARNINGS (why they appear, and why it's fine)
   about every app that isn't from the App Store or from a developer
   who pays Apple $99 a year to check their apps. It is not a scan
   result - Apple simply hasn't looked at it. You approve it once.
-- "Overlyric wants access to control Spotify": macOS words this very
-  dramatically for any app that talks to another app. Overlyric only
-  asks Spotify which song is playing and how far in it is. It never
-  touches your account, playlists or likes. (It does press play
+- "Overlyric wants access to control Spotify" (or Chrome): macOS
+  words this very dramatically for any app that talks to another app.
+  Overlyric only asks Spotify which song is playing and how far in it
+  is, and asks Chrome the same about YouTube tabs (nothing else on any
+  other page). It never touches your account, playlists or likes. (It does press play
   twice: "Yellow" on its very first launch, to say hi, and the song
   you just heard if you click the "encore?" offer at its end.)
 - "Screen Recording" (only if you turn on Lyrics Colour > Auto): it

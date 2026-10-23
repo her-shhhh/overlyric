@@ -1,7 +1,8 @@
 # Overlyric — architecture
 
 A macOS menu-bar app (Swift 6.2, SwiftPM, AppKit + Core Animation; builds with the Command Line Tools
-alone) that floats the synced lyrics of the song playing in the Spotify desktop app above everything.
+alone) that floats the synced lyrics of the song playing in the Spotify desktop app, or in a YouTube tab of a
+Chromium browser, above everything.
 
 ## Data flow
 
@@ -34,7 +35,17 @@ readable random colour generator), `ArtworkColor`, `ShakeDetector`, `LyricsDiskC
 position; full poll: + track; escalates once on any disagreement). Spotify posts no notification on seek,
 so the light poll catches seeks and drift (> 0.4 s). Reads target Spotify's pid so they can never launch it.
 
-**Lyrics** — `LyricsService` tries exact `/api/get` variants then `/api/search`, sequentially with 250 ms
+**YouTube** — `YouTubeMonitor` polls (no push from a browser: 1 s while playing, 2 s otherwise, 20 s with the
+overlay off) through `BrowserScripter`: ScriptingBridge to any running Chromium browser, one Apple Event per
+window for its tabs' URLs, then a page script (`execute javascript`, needs the browser's "Allow JavaScript from
+Apple Events") in each YouTube tab reads the `<video>` (position, duration, paused/buffering, ad) and the
+Media Session metadata (title, channel, artwork) plus YouTube's "Music" card. A paused tab only counts if it's
+the one that was playing. `YouTubeTitleParser` (core) strips the usual title noise and yields ordered
+(title, artist) guesses, carried as `SpotifyTrack.alternates`; `NowPlaying` merges both monitors (the player
+that started playing last wins; a paused one keeps its lyrics up). A YouTube video with no lyrics shows nothing.
+
+**Lyrics** — `LyricsService` tries exact `/api/get` variants then `/api/search` for each guess in turn (the first
+thoroughly, the rest with a shorter chain), sequentially with 250 ms
 spacing, honouring 429/503 Retry-After, 15 s per request. Results go to memory and to
 `~/Library/Caches/com.harsh.overlyric/lyrics` (found lyrics forever, "not found" for 2 days). Network
 failures are retried by the controller at 3, 8, 20, 45 and 90 s while the song plays (♪ meanwhile).

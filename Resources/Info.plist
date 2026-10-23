@@ -29,7 +29,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Overlyric reads the current song, artist and playback position from Spotify so it can show the lyrics in time with the music.</string>
+	<string>Overlyric reads the current song, artist and playback position from Spotify, or from a YouTube tab in your browser, so it can show the lyrics in time with the music.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>
