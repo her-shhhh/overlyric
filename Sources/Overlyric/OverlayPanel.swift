@@ -58,9 +58,14 @@ final class OverlayPanel: NSPanel {
         return NSPoint(x: vf.midX, y: vf.minY + vf.height * 0.16 + 70)
     }
 
+    /// While the lyrics are being dragged: the screen under the pointer, so they follow it onto whichever
+    /// monitor it goes to (even across a gap in the arrangement), instead of sticking at an edge.
+    var pointerScreen: NSScreen?
+
     /// The screen the text (screen coordinates) is on: the one under its centre, else the one it overlaps
     /// most, else the main screen. Judged by the text, not the window, whose padding may reach a neighbour.
     func screen(for text: NSRect) -> NSScreen? {
+        if let pointerScreen { return pointerScreen }
         let centre = NSPoint(x: text.midX, y: text.midY)
         if let s = NSScreen.screens.first(where: { $0.frame.contains(centre) }) { return s }
         let overlap = { (s: NSScreen) -> CGFloat in
