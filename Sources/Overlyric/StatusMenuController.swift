@@ -39,6 +39,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private let launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     /// A little secret: holding ⌥ turns "Launch at Login" into this switch.
     private let eggsItem = NSMenuItem(title: "Easter Eggs", action: #selector(toggleEggs), keyEquivalent: "")
+    private let romanizedItem = NSMenuItem(title: "Prefer Romanized Lyrics", action: #selector(toggleRomanized), keyEquivalent: "")
 
     init(controller: LyricsController) {
         self.controller = controller
@@ -150,6 +151,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         timingMenu.addItem(timingHint)
         menu.addItem(Self.submenuItem(timingMenu))
 
+        romanizedItem.target = self
+        Self.setTitle(romanizedItem, "Prefer Romanized Lyrics", subtitle: "Latin letters when a song has both")
+        menu.addItem(romanizedItem)
         lockItem.target = self
         menu.addItem(lockItem)
         let resetPos = NSMenuItem(title: "Reset Position", action: #selector(resetPosition), keyEquivalent: "")
@@ -273,6 +277,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         sizeValueLabel.stringValue = "\(Int(settings.fontSize.rounded())) pt"
         toggleItem.state = settings.enabled ? .on : .off
         lockItem.state = settings.clickThrough ? .on : .off
+        romanizedItem.state = settings.preferRomanized ? .on : .off
         launchItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
         let status = controller.statusText
@@ -381,6 +386,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     @objc private func toggleEnabled() { settings.enabled.toggle() }
     @objc private func toggleEggs() { settings.easterEggs.toggle() }
+    @objc private func toggleRomanized() { settings.preferRomanized.toggle() }
     @objc private func toggleLock() { settings.clickThrough.toggle() }
 
     @objc private func pickStyle(_ sender: NSMenuItem) {

@@ -135,9 +135,16 @@ final class LyricsController {
         if view.style != style { view.style = style }
     }
 
+    private var romanized = Settings.shared.preferRomanized
+
     private func applySettings() {
         if view.fontSize != settings.fontSize { view.fontSize = settings.fontSize }
         applyLook()
+        if romanized != settings.preferRomanized {
+            romanized = settings.preferRomanized
+            currentTrackKey = nil                 // look the current song up again under the new preference
+            playbackChanged()
+        }
         eggs.enabled = settings.easterEggs
         view.locked = settings.clickThrough
         monitor.setActive(settings.enabled)
