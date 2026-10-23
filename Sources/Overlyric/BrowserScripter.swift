@@ -61,9 +61,11 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
     var u=new URL(location.href);
     var id=u.searchParams.get('v')||((u.pathname.match(/\\/(shorts|embed|live)\\/([^\\/?]+)/)||[])[2])||'';
     var mp=document.getElementById('movie_player');
+    var pd=null;try{pd=(mp&&typeof mp.getVideoData==='function')?mp.getVideoData():null;}catch(e){pd=null;}
+    if(pd&&pd.video_id){id=pd.video_id;}
     var ad=!!(mp&&mp.classList.contains('ad-showing'))||!!document.querySelector('.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout');
     var md=(navigator.mediaSession&&navigator.mediaSession.metadata)||null;
-    var title=(md&&md.title)||'', artist=(md&&md.artist)||'', album=(md&&md.album)||'';
+    var title=(pd&&pd.title)||(md&&md.title)||'', artist=(pd&&pd.author)||(md&&md.artist)||'', album=(md&&md.album)||'';
     var art='';
     if(md&&md.artwork&&md.artwork.length){art=md.artwork[md.artwork.length-1].src||'';}
     if(!title)title=document.title||'';
