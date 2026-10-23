@@ -30,6 +30,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     /// for every style it passes.
     private var previewWork: [ObjectIdentifier: DispatchWorkItem] = [:]
     private let lockItem = NSMenuItem(title: "Lock Position (click-through)", action: #selector(toggleLock), keyEquivalent: "")
+    private let timingStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let timingEarlier = NSMenuItem(title: "Earlier by ½ s", action: #selector(timingEarlierClicked), keyEquivalent: "")
+    private let timingLater = NSMenuItem(title: "Later by ½ s", action: #selector(timingLaterClicked), keyEquivalent: "")
+    private let timingEarlierMore = NSMenuItem(title: "Earlier by 2 s", action: #selector(timingEarlierMoreClicked), keyEquivalent: "")
+    private let timingLaterMore = NSMenuItem(title: "Later by 2 s", action: #selector(timingLaterMoreClicked), keyEquivalent: "")
+    private let timingReset = NSMenuItem(title: "Reset Timing", action: #selector(timingResetClicked), keyEquivalent: "")
     private let launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     /// A little secret: holding ⌥ turns "Launch at Login" into this switch.
     private let eggsItem = NSMenuItem(title: "Easter Eggs", action: #selector(toggleEggs), keyEquivalent: "")
@@ -127,6 +133,22 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         hint.isEnabled = false
         sizeMenu.addItem(hint)
         menu.addItem(Self.submenuItem(sizeMenu))
+
+        // Lyrics Timing: a per-song nudge for when the words run ahead of or behind the music (a music
+        // video with an intro, a different edit).
+        let timingMenu = NSMenu(title: "Lyrics Timing")
+        timingStatusItem.isEnabled = false
+        timingMenu.addItem(timingStatusItem)
+        timingMenu.addItem(.separator())
+        for it in [timingLater, timingLaterMore, timingEarlier, timingEarlierMore] { it.target = self; timingMenu.addItem(it) }
+        timingMenu.addItem(.separator())
+        timingReset.target = self
+        timingMenu.addItem(timingReset)
+        timingMenu.addItem(.separator())
+        let timingHint = NSMenuItem(title: "Words too early? Make them later. Remembered per song.", action: nil, keyEquivalent: "")
+        timingHint.isEnabled = false
+        timingMenu.addItem(timingHint)
+        menu.addItem(Self.submenuItem(timingMenu))
 
         lockItem.target = self
         menu.addItem(lockItem)
@@ -261,6 +283,14 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let automationBlocked = controller.monitor.automation == .denied && controller.monitor.snapshot.track == nil
         statusDetailItem.action = automationBlocked ? #selector(openAutomationSettings) : nil
         statusDetailItem.isEnabled = automationBlocked
+
+        let nudge = controller.timingNudge
+        let canNudge = controller.hasSongForTiming
+        timingStatusItem.title = !canNudge ? "No song with lyrics right now"
+            : abs(nudge) < 0.01 ? "Lyrics on time (as found)"
+            : String(format: "Lyrics shifted %@%.1f s %@", nudge > 0 ? "+" : "−", abs(nudge), nudge > 0 ? "later" : "earlier")
+        for it in [timingLater, timingLaterMore, timingEarlier, timingEarlierMore] { it.isEnabled = canNudge }
+        timingReset.isEnabled = canNudge && abs(nudge) >= 0.01
 
         let mode = settings.colorMode
         autoItem.state = mode == .autoContrast ? .on : .off
@@ -416,6 +446,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
             NSWorkspace.shared.open(url)
         }
     }
+
+    @objc private func timingEarlierClicked() { controller.timingNudge -= 0.5 }
+    @objc private func timingLaterClicked() { controller.timingNudge += 0.5 }
+    @objc private func timingEarlierMoreClicked() { controller.timingNudge -= 2 }
+    @objc private func timingLaterMoreClicked() { controller.timingNudge += 2 }
+    @objc private func timingResetClicked() { controller.timingNudge = 0 }
 
     @objc private func zoomIn() { settings.fontSize = settings.fontSize * 1.15 }
     @objc private func zoomOut() { settings.fontSize = settings.fontSize / 1.15 }
