@@ -20,12 +20,29 @@ import Testing
         #expect(YouTubeTitleParser.cleanChannel("Arctic Monkeys") == "Arctic Monkeys")
     }
 
+    @Test func labelAndGenericChannelsAreDroppedButRealArtistsStay() {
+        for label in ["Music", "Songs", "Hindi Songs", "Bollywood Music", "Punjabi Hits", "Lyrics", "T-Series", "Zee Music Company",
+                      "Sony Music India", "Speed Records", "Coke Studio", "Ultra Music", "MTV India", "Netflix India"] {
+            #expect(YouTubeTitleParser.cleanChannel(label) == "", "\(label) is a label")
+        }
+        for artist in ["Hindi Zahra", "Punjabi MC", "Ultra Naté", "Speed", "Venus", "Music Lab"] {
+            #expect(YouTubeTitleParser.cleanChannel(artist) == artist, "\(artist) is an artist")
+        }
+    }
+
     @Test func primaryArtistSplitsCollaborations() {
         #expect(YouTubeTitleParser.primaryArtist("Ali Sethi x Shae Gill") == "Ali Sethi")
         #expect(YouTubeTitleParser.primaryArtist("Lil Nas X ft. Jack Harlow") == "Lil Nas X")
         #expect(YouTubeTitleParser.primaryArtist("Dua Lipa, Elton John") == "Dua Lipa")
+        #expect(YouTubeTitleParser.primaryArtist("Dua Lipa, Elton John & PNAU") == "Dua Lipa")
         #expect(YouTubeTitleParser.primaryArtist("Simon & Garfunkel") == "Simon & Garfunkel")
         #expect(YouTubeTitleParser.primaryArtist("Coldplay") == "Coldplay")
+    }
+
+    @Test func primaryArtistKeepsListShapedBandNames() {
+        #expect(YouTubeTitleParser.primaryArtist("Earth, Wind & Fire") == "Earth, Wind & Fire")
+        #expect(YouTubeTitleParser.primaryArtist("Crosby, Stills, Nash & Young") == "Crosby, Stills, Nash & Young")
+        #expect(YouTubeTitleParser.primaryArtist("Peter, Paul and Mary") == "Peter, Paul and Mary")
     }
 
     @Test func artistDashSongIsTheFirstGuess() {
@@ -46,6 +63,20 @@ import Testing
         #expect(g.contains(TrackGuess(name: "Ali Sethi x Shae Gill", artist: "Pasoori")))
     }
 
+    @Test func onlyWhollyNoiseSegmentsAreJunk() {
+        #expect(YouTubeTitleParser.guesses(.init(title: "Lana Del Rey - Video Games (Official Music Video)", channel: "LanaDelReyVEVO")).first
+                == TrackGuess(name: "Video Games", artist: "Lana Del Rey"))
+        #expect(YouTubeTitleParser.guesses(.init(title: "Audio Bullys - We Don't Care", channel: "someone")).first
+                == TrackGuess(name: "We Don't Care", artist: "Audio Bullys"))
+        #expect(YouTubeTitleParser.guesses(.init(title: "Alfaaz | Hamza Malik | Official Video", channel: "Hamza Malik")).first
+                == TrackGuess(name: "Alfaaz", artist: "Hamza Malik"))
+        // Whole-segment noise still goes: label, episode, year, "Lyric Video".
+        let g = YouTubeTitleParser.guesses(.init(title: "Kesariya | Brahmastra | Season 2 | 2022 | Lyric Video | Arijit Singh", channel: "Sony Music India"))
+        #expect(g.first == TrackGuess(name: "Kesariya", artist: "Brahmastra"))
+        #expect(g.contains(TrackGuess(name: "Kesariya", artist: "Arijit Singh")))
+        #expect(!g.contains { $0.artist == "Lyric Video" || $0.artist == "2022" || $0.name == "Season 2" })
+    }
+
     @Test func splitsOnEverySeparatorAndIgnoresLabelChannels() {
         let g = YouTubeTitleParser.guesses(.init(
             title: "BEQADRA (Official Video): FAHEEM ABDULLAH | SHANYA KASHYAP | HYDER DAR | NAJIULLAH", channel: "T-Series"))
@@ -53,6 +84,16 @@ import Testing
         #expect(!g.contains { $0.artist == "T-Series" })
         #expect(YouTubeTitleParser.cleanChannel("Zee Music Company") == "")
         #expect(YouTubeTitleParser.cleanChannel("Coldplay") == "Coldplay")
+    }
+
+    @Test func atMostFourGuessesAndTheFallbackOnlyWhenItFits() {
+        let many = YouTubeTitleParser.guesses(.init(
+            title: "BEQADRA (Official Video): FAHEEM ABDULLAH | SHANYA KASHYAP | HYDER DAR | NAJIULLAH", channel: "T-Series"))
+        #expect(many.count == 4)
+        #expect(!many.contains { $0.artist.isEmpty })
+        let few = YouTubeTitleParser.guesses(.init(title: "Pasoori | Coke Studio | Season 14 | Ali Sethi x Shae Gill", channel: "Coke Studio"))
+        #expect(few.count == 3)
+        #expect(few.last == TrackGuess(name: "Pasoori Coke Studio Season 14 Ali Sethi x Shae Gill", artist: ""))
     }
 
     @Test func collaborationOrChannelMarksTheArtistHalf() {
@@ -67,6 +108,19 @@ import Testing
     @Test func quotedSongTitle() {
         let g = YouTubeTitleParser.guesses(.init(title: "Arctic Monkeys \"Do I Wanna Know?\" (Official Video)", channel: "Official Arctic Monkeys"))
         #expect(g.first == TrackGuess(name: "Do I Wanna Know?", artist: "Arctic Monkeys"))
+        #expect(YouTubeTitleParser.guesses(.init(title: "Adele “Hello” (Official Video)", channel: "AdeleVEVO")).first
+                == TrackGuess(name: "Hello", artist: "Adele"))
+        #expect(YouTubeTitleParser.guesses(.init(title: "Adele 'Hello' (Official Video)", channel: "AdeleVEVO")).first
+                == TrackGuess(name: "Hello", artist: "Adele"))
+    }
+
+    @Test func apostrophesAreNotQuotes() {
+        #expect(YouTubeTitleParser.guesses(.init(title: "Journey - Don't Stop Believin' (Official Audio)", channel: "journeyVEVO")).first
+                == TrackGuess(name: "Don't Stop Believin'", artist: "Journey"))
+        #expect(YouTubeTitleParser.guesses(.init(title: "Guns N' Roses - Sweet Child O' Mine (Official Music Video)", channel: "GunsNRosesVEVO")).first
+                == TrackGuess(name: "Sweet Child O' Mine", artist: "Guns N' Roses"))
+        #expect(YouTubeTitleParser.guesses(.init(title: "Oasis - Don’t Look Back In Anger (Official Video)", channel: "Oasis")).first
+                == TrackGuess(name: "Don’t Look Back In Anger", artist: "Oasis"))
     }
 
     @Test func musicCardComesFirst() {
