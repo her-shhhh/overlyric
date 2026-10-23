@@ -34,6 +34,10 @@ final class YouTubeMonitor {
     private var pollPending = false
     private var deniedAt: Date?
     private var currentTab: BrowserScripter.TabRef?
+    /// A track seen once that differs from the current one: it counts when the next poll agrees. YouTube
+    /// switches songs in pieces (the URL, the player, the Media Session each at their own moment), so a
+    /// poll that lands mid-switch can pair the new video's id with the old song's title and position.
+    private var unconfirmed: SpotifyTrack?
     private var artwork: [String: URL] = [:]
     private var observersInstalled = false
 
@@ -207,9 +211,23 @@ final class YouTubeMonitor {
             if snapshot != .empty { clear() }
             return
         }
+        let track = Self.track(for: v)
+        if let current = snapshot.track, current.id != track.id || current.name != track.name {
+            if let seen = unconfirmed, seen.id == track.id, seen.name == track.name {
+                unconfirmed = nil                           // the same new song twice in a row: real
+            } else {
+                unconfirmed = track
+                Log.browser.notice("new song seen once (\(track.name, privacy: .public)); confirming on the next poll")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    MainActor.assumeIsolated { self?.pollNow() }
+                }
+                return
+            }
+        } else {
+            unconfirmed = nil
+        }
         currentTab = v.tab
         browserName = names[v.tab.pid]
-        let track = Self.track(for: v)
         if let url = v.artworkURL { artwork[track.id] = url }
         apply(track: track, playing: !v.paused && !v.ended, position: v.position, at: sampledAt)
     }
@@ -249,6 +267,7 @@ final class YouTubeMonitor {
         let had = snapshot != .empty
         snapshot = .empty
         currentTab = nil
+        unconfirmed = nil
         reschedule()
         if had { onChange?() }
     }
