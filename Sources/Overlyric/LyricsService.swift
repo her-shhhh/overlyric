@@ -1,7 +1,7 @@
 import Foundation
 import OverlyricCore
 
-/// Fetches synced lyrics from lrclib.net for a Spotify track.
+/// Fetches synced lyrics from lrclib.net for a track (from Spotify, or a YouTube tab with its guesses).
 /// Requests are strictly sequential with a short spacing and honour 429/503 Retry-After, as lrclib asks.
 /// Only definitive answers (found / 404 chain exhausted) are cached; transport or decode failures
 /// are reported so the controller can retry later.
@@ -68,41 +68,80 @@ final class LyricsService {
     // MARK: Lookup chain (see docs/ARCHITECTURE.md § LyricsService)
 
     /// The parsed lyrics and the raw LRC text they came from (for the disk cache).
+    /// A Spotify track is one (title, artist); a YouTube video brings several guesses, tried in order —
+    /// the first one thoroughly, the rest with a shorter chain, so a guess that's plain wrong costs little.
     private func resolve(_ t: SpotifyTrack) async throws -> (SyncedLyrics?, String?) {
         let duration: TimeInterval? = t.duration > 0 ? t.duration : nil
-        let primary = TrackNameCleaner.primaryArtist(t.artist)
-        let titles = TrackNameCleaner.titleVariants(t.name)
-        let cleaned = titles.last ?? t.name
         let album: String? = t.album.isEmpty ? nil : t.album
+        var seen = Set<String>()
+        for (i, guess) in t.guesses.enumerated() {
+            if let hit = try await resolve(guess, album: i == 0 ? album : nil, duration: duration,
+                                           thorough: i == 0, fromYouTube: t.isFromYouTube, seen: &seen) {
+                return hit
+            }
+        }
+        return (nil, nil)
+    }
+
+    private func resolve(_ g: TrackGuess, album: String?, duration: TimeInterval?, thorough: Bool, fromYouTube: Bool,
+                         seen: inout Set<String>) async throws -> (SyncedLyrics, String)? {
+        // YouTube artists come as "A x B", "A ft. B"; Spotify's are comma-joined.
+        let primary = fromYouTube ? YouTubeTitleParser.primaryArtist(g.artist) : TrackNameCleaner.primaryArtist(g.artist)
+        let titles = TrackNameCleaner.titleVariants(g.name)
+        let cleaned = titles.last ?? g.name
 
         // Stage A — exact lookups, cheapest first. lrclib already folds case/punctuation/diacritics.
-        var attempts: [(track: String, artist: String, album: String?)] = [
-            (t.name, t.artist, album),
-            (t.name, t.artist, nil),
-            (t.name, primary, nil),
-            (cleaned, primary, nil),
-            (cleaned, t.artist, nil),
-        ]
-        for title in titles.dropFirst().dropLast() { attempts.append((title, primary, nil)) }
-        var seen = Set<String>()
+        var attempts: [(track: String, artist: String, album: String?)] = []
+        if !g.artist.isEmpty {
+            attempts = [(g.name, g.artist, album), (g.name, g.artist, nil), (g.name, primary, nil), (cleaned, primary, nil)]
+            if thorough {
+                attempts.append((cleaned, g.artist, nil))
+                for title in titles.dropFirst().dropLast() { attempts.append((title, primary, nil)) }
+            }
+        }
         for a in attempts {
-            let key = "\(a.track)|\(a.artist)|\(a.album ?? "")".lowercased()
+            let key = "get|\(a.track)|\(a.artist)|\(a.album ?? "")".lowercased()
             guard seen.insert(key).inserted else { continue }
             if let rec = try await get(track: a.track, artist: a.artist, album: a.album, duration: duration),
-               rec.hasSyncedLyrics, let raw = rec.syncedLyrics, let parsed = LRCParser.parse(raw) {
-                return (parsed, raw)
+               rec.hasSyncedLyrics, let hit = Self.shifted(rec, toFit: duration, fromYouTube: fromYouTube) {
+                return hit
             }
         }
 
         // Stage B — search (primary artist only: lrclib phrase-matches the artist column).
-        var candidates = try await search(track: cleaned, artist: primary)
-        if candidates.isEmpty { candidates = try await search(track: cleaned, artist: nil) }
-        if candidates.isEmpty { candidates = try await search(q: "\(cleaned) \(primary)") }
-        if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned),
-           let raw = best.syncedLyrics, let parsed = LRCParser.parse(raw) {
-            return (parsed, raw)
+        var candidates: [LRCLIBRecord] = []
+        var searches: [(track: String?, artist: String?, q: String?)] = []
+        if !primary.isEmpty { searches.append((cleaned, primary, nil)) }
+        if thorough || primary.isEmpty { searches.append((cleaned, nil, nil)) }
+        searches.append((nil, nil, primary.isEmpty ? cleaned : "\(cleaned) \(primary)"))
+        for s in searches where candidates.isEmpty {
+            let key = "search|\(s.track ?? "")|\(s.artist ?? "")|\(s.q ?? "")".lowercased()
+            guard seen.insert(key).inserted else { continue }
+            candidates = try await search(track: s.track, artist: s.artist, q: s.q)
         }
-        return (nil, nil)
+        if let best = LyricsMatcher.best(from: candidates, duration: duration, title: cleaned),
+           let hit = Self.shifted(best, toFit: duration, fromYouTube: fromYouTube) {
+            return hit
+        }
+        return nil
+    }
+
+    /// The record's lyrics, parsed, with the raw LRC for the cache. A YouTube video that runs longer than
+    /// the record (a label intro, a cinematic opening) gets the lyrics delayed by the difference — the best
+    /// guess without hearing it. Baked in as an `[offset:]` tag
+    /// so the cached copy (one per video) carries it.
+    private static func shifted(_ rec: LRCLIBRecord, toFit duration: TimeInterval?, fromYouTube: Bool) -> (SyncedLyrics, String)? {
+        guard var raw = rec.syncedLyrics else { return nil }
+        if fromYouTube, let duration, let recorded = rec.duration, recorded > 0 {
+            let extra = duration - recorded
+            if abs(extra) > 1.5 {
+                // LRC convention: a positive offset shifts the lines earlier, so a longer video wants a negative one.
+                raw = "[offset:\(Int((-extra * 1000).rounded()))]\n" + raw
+                Log.lyrics.notice("video is \(String(format: "%.1f", extra), privacy: .public)s longer than the lyrics' track; shifting the lyrics by that")
+            }
+        }
+        guard let parsed = LRCParser.parse(raw) else { return nil }
+        return (parsed, raw)
     }
 
     // MARK: HTTP
