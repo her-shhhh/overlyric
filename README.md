@@ -77,6 +77,7 @@ Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop
 | **Lyrics Font ▸** | **Rounded** *(default)*, **Serif**, **Poster**, **Script**, **Chic**, **Retro** or **Notebook** (below). Hover to try, click to keep. |
 | **Lyrics Colour ▸** | **Auto** (colourful, always readable on what's behind), **Match album artwork**, 9 presets, or **Custom…**. Hover a preset to try it. |
 | **Text Size ▸** | A live slider (14–160 pt), Bigger / Smaller / Reset. Or hold **⌘** and scroll on the lyrics. |
+| **Lyrics Timing ▸** | Words running ahead of or behind the music (a different edit, an intro)? Nudge them earlier or later by ½ s or 2 s. Remembered per song. |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through to what's underneath. |
 | **Reset Position** | Back to the bottom-centre of the screen. |
 | **Launch at Login** | Starts Overlyric when you log in (needs the app in Applications). |

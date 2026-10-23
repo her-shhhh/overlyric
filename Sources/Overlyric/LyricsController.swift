@@ -271,6 +271,18 @@ final class LyricsController {
 
     // MARK: Timing
 
+    /// Seconds the current song's lyrics are shifted later (negative: earlier) by the Lyrics Timing menu.
+    var timingNudge: TimeInterval {
+        get { currentTrackKey.map(settings.timing(for:)) ?? 0 }
+        set { if let key = currentTrackKey { settings.setTiming(newValue, for: key) } }
+    }
+    var hasSongForTiming: Bool { currentTrackKey != nil && phase == .loaded }
+
+    /// Where the lyrics are, in song time: the player's position minus the nudge.
+    private func lyricPosition(_ snap: PlaybackSnapshot, at now: Date) -> TimeInterval {
+        snap.position(at: now) - timingNudge
+    }
+
     /// Arms one timer for the next moment something changes: the next line, or the encore window.
     private func armTimer() {
         lineTimer?.invalidate()
@@ -278,11 +290,11 @@ final class LyricsController {
         let snap = monitor.snapshot
         guard visible, snap.isPlaying, phase == .loaded, let lyrics, !lyrics.isEmpty else { return }
         let now = Date()
-        let position = snap.position(at: now)
+        let position = lyricPosition(snap, at: now)
         var wake: TimeInterval?
         if let next = lyrics.window(at: position).next { wake = lyrics.lines[next].time - position }
         if let duration = snap.track?.duration, duration > 20 {
-            let encore = duration - 7.5 - position
+            let encore = duration - 7.5 - snap.position(at: now)
             if encore > 0 { wake = min(wake ?? encore, encore) }
         }
         guard let wake else { return }
@@ -316,7 +328,7 @@ final class LyricsController {
         case .loaded:
             guard let lyrics else { return }
             let now = Date()
-            let position = snap.position(at: now)
+            let position = lyricPosition(snap, at: now)
             let clock = PlaybackClock(position: position, hostTime: CACurrentMediaTime(), playing: snap.isPlaying)
             let state = LyricsState(id: key, lyrics: lyrics, index: lyrics.currentIndex(at: position), clock: clock)
             show()
