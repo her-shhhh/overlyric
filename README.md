@@ -58,6 +58,8 @@ in any tab, front or back. Two one-time switches:
 1. macOS asks whether Overlyric may control the browser: click **Allow**.
 2. Chrome (and Brave, Edge, Vivaldi) also needs **View › Developer › Allow JavaScript from Apple Events** turned
    on. That's how Overlyric asks the tab where the video is up to; the mic menu tells you if your browser needs it.
+   **Dia** has no switch for this: it has to be *opened* with a flag. Quit Dia, then in Terminal run
+   `open -a Dia --args --enable-applescript-javascript` (your tabs come back). It lasts until Dia is next quit.
 
 It reads the video's title, channel and YouTube's own "Music" card, tries the likely title/artist splits at
 lrclib and keeps the synced lyrics whose title and length match the video. Official audio, lyric videos and

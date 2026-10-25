@@ -1,4 +1,14 @@
-# Overlyric — status (as of 2026-10-23, version 1.4.0)
+# Overlyric — status (as of 2026-10-25, version 1.4.1)
+
+## 1.4.1 (2026-10-25)
+- **YouTube in Dia works** (watched live on the dev Mac: a video recognised, looked up, 69 synced lines up
+  in 8 s). Two fixes: Dia hands the page script's result back JSON-encoded a second time (a quoted,
+  escaped string), which Chrome doesn't, so the reader now unwraps it; and the "JavaScript from Apple Events
+  is off" log line carries the browser's exact error. Dia's is "-10006: JavaScript execution via AppleScript
+  requires the --enable-applescript-javascript launch flag": Dia has no working menu switch for this, it
+  must be opened with that flag (per launch). The menu hint says so for Dia; README and the guide carry the
+  command. Next: read macOS Now Playing (PR #1's adapter) so no browser needs any switch.
+
 
 ## 1.4.0 (2026-10-23)
 Four features from the first outside contributor (GitHub mohdzaryab, PRs #2–#5), reviewed and reworked where

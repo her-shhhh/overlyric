@@ -462,7 +462,9 @@ final class LyricsController {
                 let name = youtube.browserName ?? "your browser"
                 switch youtube.automation {
                 case .denied: notes.append("Allow Automation for \(name) to read YouTube")
-                case .javascriptDisabled: notes.append("In \(name) turn on View › Developer › Allow JavaScript from Apple Events")
+                case .javascriptDisabled:
+                    notes.append(name == "Dia" ? "Dia reads YouTube only when opened with a flag — see the guide (YouTube in Dia)"
+                                              : "In \(name) turn on View › Developer › Allow JavaScript from Apple Events")
                 case .unavailable(let msg): notes.append("Can't read \(name) (\(msg))")
                 default: break
                 }

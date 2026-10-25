@@ -201,10 +201,8 @@ final class YouTubeMonitor {
                     self.deniedAt = Date()
                     self.clear()
                     self.onChange?()
-                case .javascriptDisabled:
-                    if self.automation != .javascriptDisabled {
-                        Log.browser.error("the browser's 'Allow JavaScript from Apple Events' is off")
-                    }
+                case .javascriptDisabled(let detail):
+                    Log.browser.error("the browser's 'Allow JavaScript from Apple Events' is off (\(detail, privacy: .public))")
                     self.automation = .javascriptDisabled
                     self.deniedAt = Date()
                     self.clear()

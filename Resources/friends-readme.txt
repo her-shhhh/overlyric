@@ -78,7 +78,10 @@ USE IT
   Two things to allow, once: macOS asks whether Overlyric may control
   the browser (click Allow), and Chrome (also Brave, Edge) wants
   View > Developer > Allow JavaScript from Apple Events turned on.
-  The mic menu tells you if yours needs it.
+  The mic menu tells you if yours needs it. Dia has no such switch:
+  quit Dia, then in Terminal run
+    open -a Dia --args --enable-applescript-javascript
+  and it comes back with your tabs, readable until you next quit it.
 - Lyrics Style: 10 looks - Dynamic, Jump, Typewriter, Karaoke, Cube
   and more. Try them all. Pick a favourite. Change your mind every
   song.

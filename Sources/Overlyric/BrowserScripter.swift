@@ -53,7 +53,8 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
     enum Failure: Error {
         case notRunning
         case denied
-        case javascriptDisabled
+        /// The browser's "Allow JavaScript from Apple Events" switch is off (its error, for the log).
+        case javascriptDisabled(String)
         /// The browser didn't answer in time (typically: the Automation prompt is still on screen).
         case timeout
         case other(String)
@@ -274,8 +275,15 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
     }
 
     private static func parse(_ json: String, tab: TabRef, sampledAt: Date) -> Video? {
-        guard let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        // A page still loading answers with nothing at all.
+        guard !json.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let data = json.data(using: .utf8) else { return nil }
+        var obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if obj == nil, let inner = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) as? String,
+           let innerData = inner.data(using: .utf8) {
+            // Dia hands the script's result back JSON-encoded once more (a quoted, escaped string); Chrome doesn't.
+            obj = try? JSONSerialization.jsonObject(with: innerData) as? [String: Any]
+        }
+        guard let obj else {
             Log.browser.error("probe returned non-JSON: \(json.prefix(120), privacy: .public)")
             return nil
         }
@@ -316,7 +324,7 @@ final class BrowserScripter: NSObject, SBApplicationDelegate {
         let text = error.localizedDescription
         let details = error.userInfo.values.compactMap { $0 as? String }
         if ([text] + details).contains(where: { $0.localizedCaseInsensitiveContains("javascript") }) {
-            return .javascriptDisabled
+            return .javascriptDisabled("\(error.code): \(text)" + (details.isEmpty ? "" : " — \(details.joined(separator: " / "))"))
         }
         return .other("\(error.code): \(text)")
     }
