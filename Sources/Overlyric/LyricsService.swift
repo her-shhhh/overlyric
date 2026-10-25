@@ -77,9 +77,9 @@ final class LyricsService {
         let duration: TimeInterval? = t.duration > 0 ? t.duration : nil
         let album: String? = t.album.isEmpty ? nil : t.album
         var seen = Set<String>()
-        for (i, guess) in t.guesses.prefix(t.isFromYouTube ? Self.maxGuesses : 1).enumerated() {
+        for (i, guess) in t.guesses.prefix(t.isFromBrowser ? Self.maxGuesses : 1).enumerated() {
             if let hit = try await resolve(guess, album: i == 0 ? album : nil, duration: duration,
-                                           thorough: i == 0, fromYouTube: t.isFromYouTube, seen: &seen) {
+                                           thorough: i == 0, fromYouTube: t.isFromBrowser, seen: &seen) {
                 return hit
             }
         }

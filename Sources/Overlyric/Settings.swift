@@ -49,6 +49,7 @@ final class Settings {
         static let easterEggs = "overlyric.easterEggs"
         static let romanized = "overlyric.preferRomanized"
         static let youtube = "overlyric.youtubeInBrowser"
+        static let otherPlayers = "overlyric.otherPlayers"
     }
 
     var enabled: Bool {
@@ -117,8 +118,16 @@ final class Settings {
         set { d.set(newValue, forKey: Key.romanized); notify() }
     }
 
-    /// Lyrics for a song playing on YouTube in a browser tab (Chrome, Dia, Arc, Brave, Edge…). Off until
-    /// turned on: reading a browser needs macOS's Automation permission and polls it while it runs.
+    /// Lyrics for whatever macOS shows as Now Playing: YouTube in any browser, YouTube Music, Apple Music…
+    /// On by default: nothing to allow, nothing to switch on in the player.
+    var otherPlayers: Bool {
+        get { d.object(forKey: Key.otherPlayers) as? Bool ?? true }
+        set { d.set(newValue, forKey: Key.otherPlayers); notify() }
+    }
+
+    /// Exact sync for a song playing on YouTube in a browser tab (Chrome, Dia, Arc, Brave, Edge…), read
+    /// from the page itself. Off until turned on: it needs macOS's Automation permission, the browser's
+    /// scripting switch, and polls the browser while it runs.
     var youtubeInBrowser: Bool {
         get { d.bool(forKey: Key.youtube) }
         set { d.set(newValue, forKey: Key.youtube); notify() }

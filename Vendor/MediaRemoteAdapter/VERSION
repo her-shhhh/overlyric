@@ -1,0 +1,7 @@
+MediaRemote Adapter v0.7.7 (commit e3ff502, 2026-09-03)
+https://github.com/ungive/mediaremote-adapter — BSD 3-Clause, see LICENSE.
+
+Vendored unchanged except: the test client is left out (only its header is kept, adapter/test.m imports
+it). Built by scripts/build-adapter.sh.
+Lets Overlyric read macOS Now Playing on every macOS version: /usr/bin/perl, which macOS still allows
+to use the MediaRemote framework, loads this helper and streams what is playing as JSON lines.

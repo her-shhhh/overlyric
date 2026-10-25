@@ -28,8 +28,10 @@ final class YouTubeMonitor {
     private(set) var isEnabled = false
     private(set) var snapshot = PlaybackSnapshot.empty
     private(set) var automation: Automation = .unknown
-    /// The browser the current (or last) video came from, for the menu.
+    /// The browser the current (or last) video came from, for the menu, and its bundle id (so the same
+    /// song isn't also taken from Now Playing).
     private(set) var browserName: String?
+    private(set) var browserBundleID: String?
     var onChange: (() -> Void)?
 
     private let scripter = BrowserScripter()
@@ -307,6 +309,7 @@ final class YouTubeMonitor {
         }
         currentTab = v.tab
         browserName = names[v.tab.pid]
+        browserBundleID = v.tab.bundleID
         if let url = v.artworkURL { artwork[track.id] = url }
         apply(track: track, playing: !v.paused && !v.ended, position: v.position, at: v.sampledAt)
     }

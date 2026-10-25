@@ -35,8 +35,19 @@ readable random colour generator), `ArtworkColor`, `ShakeDetector`, `LyricsDiskC
 position; full poll: + track; escalates once on any disagreement). Spotify posts no notification on seek,
 so the light poll catches seeks and drift (> 0.4 s). Reads target Spotify's pid so they can never launch it.
 
-**YouTube** — off until `Settings.youtubeInBrowser` is on: no browser is read and no Automation prompt appears
-before that. Then `YouTubeMonitor` polls (no push from a browser: 1 s while playing, 2 s while our tab is paused,
+**Now Playing** — `NowPlayingMonitor` (Menu › Other Players, on by default): whatever macOS shows as Now Playing
+(a YouTube tab in any browser, YouTube Music, Apple Music, any app with media metadata). Since macOS 15.4 only
+Apple's processes may read MediaRemote, so it comes from the vendored MediaRemote Adapter (`Vendor/`,
+`scripts/build-adapter.sh`): `/usr/bin/perl` loads the helper framework and streams JSON lines (`stream --micros`,
+diffs merged); the helper is copied byte for byte to Application Support first, so a downloaded (quarantined)
+copy of the app can still load it. No permission prompt, no polling: the stream speaks on change; position =
+elapsed at the player's timestamp, extrapolated by its rate. A browser's title is a video's, so it goes
+through `YouTubeTitleParser` (id `web:…`); a music app's title and artist are taken as they are (`nowplaying:…`).
+`NowPlaying` merges the three sources (most recently started player wins; a paused one keeps its lyrics) and
+skips Now Playing entries that another source already covers: Spotify, and a browser whose tab is read directly.
+
+**YouTube tab (exact)** — off until `Settings.youtubeInBrowser` is on: no browser is read and no Automation prompt
+appears before that. Then `YouTubeMonitor` polls (no push from a browser: 1 s while playing, 2 s while our tab is paused,
 5 s when no YouTube tab is open, 20 s with the overlay off) through `BrowserScripter`: ScriptingBridge to any
 running Chromium browser (Chrome, Dia, Arc, Brave, Edge, Vivaldi), one Apple Event per window for its tabs'
 URLs, then a page script (`execute javascript`; Chrome-family browsers need "Allow JavaScript from Apple Events")

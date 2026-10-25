@@ -28,11 +28,14 @@ public struct SpotifyTrack: Equatable, Sendable {
 
     public var isAd: Bool { id.hasPrefix("spotify:ad") || id.hasPrefix("youtube:ad") }
     public var isEpisode: Bool { id.hasPrefix("spotify:episode") }
-    /// Playing in a browser tab (YouTube / YouTube Music) rather than in Spotify.
+    /// Read from a YouTube tab's page (the tab is known, so a click can open it).
     public var isFromYouTube: Bool { id.hasPrefix("youtube:") }
-    /// Anything we can show lyrics for. A YouTube video longer than 20 minutes is a mix, an album or a
-    /// podcast, not a song: it isn't looked up.
-    public var isSong: Bool { !isAd && !isEpisode && !name.isEmpty && !(isFromYouTube && duration > 20 * 60) }
+    /// Playing in a browser (a YouTube tab read directly, or whatever a browser shows as Now Playing): the
+    /// title is a video's, so it is read with guesses, a title match and the 20-minute rule.
+    public var isFromBrowser: Bool { isFromYouTube || id.hasPrefix("web:") }
+    /// Anything we can show lyrics for. A video longer than 20 minutes is a mix, an album or a podcast,
+    /// not a song: it isn't looked up.
+    public var isSong: Bool { !isAd && !isEpisode && !name.isEmpty && !(isFromBrowser && duration > 20 * 60) }
 
     /// `name`/`artist` first, then the alternates, without repeats.
     public var guesses: [TrackGuess] {

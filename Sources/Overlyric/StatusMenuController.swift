@@ -39,7 +39,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     /// A little secret: holding ⌥ turns "Launch at Login" into this switch.
     private let eggsItem = NSMenuItem(title: "Easter Eggs", action: #selector(toggleEggs), keyEquivalent: "")
     private let romanizedItem = NSMenuItem(title: "Prefer Romanized Lyrics", action: #selector(toggleRomanized), keyEquivalent: "")
-    private let youtubeItem = NSMenuItem(title: "YouTube in Browser", action: #selector(toggleYouTube), keyEquivalent: "")
+    private let otherPlayersItem = NSMenuItem(title: "Other Players", action: #selector(toggleOtherPlayers), keyEquivalent: "")
+    private let youtubeItem = NSMenuItem(title: "YouTube in Browser (exact)", action: #selector(toggleYouTube), keyEquivalent: "")
 
     init(controller: LyricsController) {
         self.controller = controller
@@ -154,8 +155,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         romanizedItem.target = self
         Self.setTitle(romanizedItem, "Prefer Romanized Lyrics", subtitle: "Latin letters when a song has both")
         menu.addItem(romanizedItem)
+        otherPlayersItem.target = self
+        Self.setTitle(otherPlayersItem, "Other Players", subtitle: "YouTube in any browser, YouTube Music, Apple Music…")
+        menu.addItem(otherPlayersItem)
         youtubeItem.target = self
-        Self.setTitle(youtubeItem, "YouTube in Browser", subtitle: "Lyrics for songs playing in a Chrome, Dia or Arc tab")
+        Self.setTitle(youtubeItem, "YouTube in Browser (exact)", subtitle: "Reads the tab itself; needs the browser's permission")
         menu.addItem(youtubeItem)
         lockItem.target = self
         menu.addItem(lockItem)
@@ -324,6 +328,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         lockItem.state = settings.clickThrough ? .on : .off
         romanizedItem.state = settings.preferRomanized ? .on : .off
         youtubeItem.state = settings.youtubeInBrowser ? .on : .off
+        otherPlayersItem.state = settings.otherPlayers ? .on : .off
         launchItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
 
         let status = controller.statusText
@@ -436,6 +441,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func toggleEggs() { settings.easterEggs.toggle() }
     @objc private func toggleRomanized() { settings.preferRomanized.toggle() }
     @objc private func toggleYouTube() { settings.youtubeInBrowser.toggle() }
+    @objc private func toggleOtherPlayers() { settings.otherPlayers.toggle() }
     @objc private func toggleLock() { settings.clickThrough.toggle() }
 
     @objc private func pickStyle(_ sender: NSMenuItem) {

@@ -1,4 +1,19 @@
-# Overlyric — status (as of 2026-10-25, version 1.4.1)
+# Overlyric — status (as of 2026-10-25, version 1.5.0)
+
+## 1.5.0 (2026-10-25)
+- **Lyrics for YouTube in any browser, YouTube Music, Apple Music — nothing to set up.** Menu › **Other
+  Players** (on by default) follows whatever macOS shows as Now Playing, read through the vendored MediaRemote
+  Adapter from PR #1 (branch `youtube-music`: the adapter integration and `NowPlayingMonitor` by Sourav,
+  sorathedora; adapter by ungive, BSD 3-Clause). The 1.4 tab-script path stays as the optional **YouTube in
+  Browser (exact)**. `NowPlaying` merges all three sources and drops Now Playing entries that Spotify or the
+  tab reader already covers. A browser's Now Playing title goes through the YouTube title parser (`web:` ids:
+  guesses, title match, 20-minute rule, nothing shown until found); a music app's is taken as is.
+- Verified live on the dev Mac (macOS 26.5): with the tab reader off, a video playing in Dia came through Now
+  Playing ("via company.thebrowser.dia") and its 77 synced lines were up 0.3 s later; the adapter builds
+  universal with the Command Line Tools and ships inside the app with its licence. Build; 74 unit tests. Not
+  yet watched: sync drift over a whole song from Now Playing's position, Apple Music, Safari, a quarantined
+  (downloaded) copy on another Mac — PR #1 had checked that path offscreen.
+
 
 ## 1.4.1 (2026-10-25)
 - **YouTube in Dia works** (watched live on the dev Mac: a video recognised, looked up, 69 synced lines up

@@ -15,6 +15,7 @@ cp "$BIN" "$APP/Contents/MacOS/Overlyric"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 ./scripts/render-readme.sh "$APP/Contents/Resources/Read This or Hum Forever.txt"   # menu › Read This or Hum Forever
+./scripts/build-adapter.sh "$APP/Contents/Resources" "$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" Resources/Info.plist)"   # Now Playing
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Ad-hoc signature (no certificates, no keychain) with an explicit designated requirement that names

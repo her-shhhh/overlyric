@@ -87,6 +87,7 @@ final class LyricsController {
         monitor.setActive(settings.enabled)
         monitor.start()
         monitor.setYouTubeEnabled(settings.youtubeInBrowser)
+        monitor.setOtherPlayersEnabled(settings.otherPlayers)
         if Onboarding.takeWelcome() {
             welcomeUntil = Date().addingTimeInterval(9)
             DispatchQueue.main.asyncAfter(deadline: .now() + 9.1) { [weak self] in
@@ -150,6 +151,7 @@ final class LyricsController {
         view.locked = settings.clickThrough
         monitor.setActive(settings.enabled)
         monitor.setYouTubeEnabled(settings.youtubeInBrowser)
+        monitor.setOtherPlayersEnabled(settings.otherPlayers)
         refresh()
         updateColorSource()
     }
@@ -336,7 +338,7 @@ final class LyricsController {
         guard shouldShow, let key = currentTrackKey else { hide(); return }
         // Most YouTube videos aren't songs: nothing shows for one until its lyrics are actually found
         // (no ♪ while looking, no "no lyrics" note).
-        if snap.track?.isFromYouTube == true, phase != .loaded { hide(); return }
+        if snap.track?.isFromBrowser == true, phase != .loaded { hide(); return }
 
         switch phase {
         case .loading:
@@ -443,10 +445,10 @@ final class LyricsController {
     // MARK: Menu status
 
     var statusText: StatusText {
-        let spotify = monitor.spotify, youtube = monitor.youtube
+        let spotify = monitor.spotify, youtube = monitor.youtube, system = monitor.system
         let browser = youtube.isEnabled && youtube.isBrowserRunning
-        guard spotify.isSpotifyRunning || browser else {
-            return StatusText(title: "Nothing playing", detail: youtube.isEnabled ? "Play a song in Spotify, or YouTube in your browser" : "")
+        guard spotify.isSpotifyRunning || browser || system.isRunning else {
+            return StatusText(title: "Nothing playing", detail: "")
         }
         let snap = monitor.snapshot
         guard let track = snap.track else {
@@ -469,14 +471,21 @@ final class LyricsController {
                 default: break
                 }
             }
+            if system.isRunning {
+                switch system.availability {
+                case .unavailable: notes.append("Can't read Now Playing on this Mac")
+                default: if notes.isEmpty { notes.append("Play something in Spotify, a browser or a music app") }
+                }
+            }
             return StatusText(title: "Nothing playing", detail: notes.joined(separator: " · "))
         }
         let icon = snap.isPlaying ? "▶" : "⏸"
-        let via = track.isFromYouTube ? "  (YouTube\(youtube.browserName.map { " in \($0)" } ?? ""))" : ""
+        let via = track.isFromYouTube ? "  (YouTube\(youtube.browserName.map { " in \($0)" } ?? ""))"
+            : (track.id.hasPrefix("web:") || track.id.hasPrefix("nowplaying:")) ? "  (\(monitor.playerName ?? "Now Playing"))" : ""
         let title = "\(icon)  \(track.name)\(track.artist.isEmpty ? "" : " — \(track.artist)")\(via)"
         let detail: String
         if !track.isSong {
-            detail = track.isAd ? "Advertisement" : track.isFromYouTube ? "Too long to be a song — no lyrics" : "Podcast episode — no lyrics"
+            detail = track.isAd ? "Advertisement" : track.isFromBrowser ? "Too long to be a song — no lyrics" : "Podcast episode — no lyrics"
         } else {
             switch phase {
             case .loading: detail = "Finding lyrics…"

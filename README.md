@@ -16,7 +16,7 @@ lyrics float right on my screen. My colleagues are thrilled.
 
 ## What it is
 
-A tiny Mac menu-bar app that floats the lyrics of whatever Spotify (or YouTube in your browser) is playing on top of everything —
+A tiny Mac menu-bar app that floats the lyrics of whatever Spotify, YouTube in any browser, YouTube Music or Apple Music is playing on top of everything —
 big, clean, Instagram-story style, perfectly in time. Only the words show; the rest is see-through.
 
 - **On top of everything**, on every Space and over full-screen apps.
@@ -26,8 +26,9 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
   the album artwork.
 - **Drag** the lyrics anywhere (right up to the screen edges), **⌘ + scroll** on them to resize,
   **click** them to jump to Spotify, **right-click** for the menu.
-- **YouTube too** — switch on *YouTube in Browser* in the menu and a song playing in a Chrome, Dia, Arc, Brave,
-  Edge or Vivaldi tab, on youtube.com or music.youtube.com, gets the same floating lyrics (see below).
+- **YouTube too, in any browser** — a song playing on youtube.com or music.youtube.com in Chrome, Safari, Dia,
+  Arc, Brave, Edge, Firefox… gets the same floating lyrics, with nothing to set up. So does Apple Music, or any
+  app that shows up in macOS's Now Playing (see below).
 - No Spotify login, no account, no subscription, no nonsense.
 
 ## For friends: install
@@ -47,25 +48,27 @@ big, clean, Instagram-story style, perfectly in time. Only the words show; the r
 4. Play a song in the **Spotify desktop app**. The first time, click **Allow** when macOS asks whether
    Overlyric may control Spotify — that's how it reads the song and its position.
 
-Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app, or YouTube in a Chromium browser.
+Requirements: macOS 14 or later (Apple Silicon or Intel) and the Spotify desktop app, YouTube in a browser, or
+any music app.
 
-### YouTube in the browser
+### YouTube in any browser, and other players
 
-Off until you turn on **YouTube in Browser** in the mic menu (Overlyric doesn't look at a browser before that).
-Then play a song on YouTube or YouTube Music in Chrome, Dia, Arc, Brave, Edge or Vivaldi and the lyrics come up,
-in any tab, front or back. Two one-time switches:
+Play a song on YouTube or YouTube Music in any browser, or in Apple Music or another music app, and the lyrics
+come up: Overlyric follows whatever macOS shows as Now Playing (the media tile in Control Centre), read through
+the [MediaRemote Adapter](https://github.com/ungive/mediaremote-adapter) (BSD 3-Clause) that ships inside the
+app. Nothing to allow, nothing to switch on in the browser. (**Other Players** in the mic menu turns this off.)
 
-1. macOS asks whether Overlyric may control the browser: click **Allow**.
-2. Chrome (and Brave, Edge, Vivaldi) also needs **View › Developer › Allow JavaScript from Apple Events** turned
-   on. That's how Overlyric asks the tab where the video is up to; the mic menu tells you if your browser needs it.
-   **Dia** has no switch for this: it has to be *opened* with a flag. Quit Dia, then in Terminal run
-   `open -a Dia --args --enable-applescript-javascript` (your tabs come back). It lasts until Dia is next quit.
+A video's title is turned into likely song/artist readings, and the synced lyrics whose title and length match
+the video are kept. Official audio, lyric videos and YouTube Music match best. A music video with a long intro
+runs early: **Lyrics Timing ▸** slides it into place. Videos that aren't songs show nothing at all. If two
+players play at once, whichever started last wins.
 
-It reads the video's title, channel and YouTube's own "Music" card, tries the likely title/artist splits at
-lrclib and keeps the synced lyrics whose title and length match the video. Official audio, lyric videos and
-YouTube Music match best. A music video with a long intro runs early: **Lyrics Timing ▸** slides it into place.
-Videos that aren't songs show nothing at all. If Spotify and YouTube both play, whichever started
-last wins. Only YouTube tabs are read, and only while the switch is on.
+**YouTube in Browser (exact)** is an optional extra for Chromium browsers: Overlyric reads the YouTube tab
+itself, so a seek shows up within a second and YouTube's own "Music" card names the song. It needs two one-time
+switches: macOS asks whether Overlyric may control the browser (click **Allow**), and Chrome (also Brave, Edge,
+Vivaldi) needs **View › Developer › Allow JavaScript from Apple Events** turned on. Dia has no such switch: it
+has to be *opened* with a flag (`open -a Dia --args --enable-applescript-javascript` in Terminal, after quitting
+it); the mic menu tells you. Most people won't need this.
 
 ### About the warnings (why they appear, and why it's fine)
 
@@ -99,7 +102,8 @@ last wins. Only YouTube tabs are read, and only while the switch is on.
 | **Text Size ▸** | A live slider (14–160 pt), Bigger / Smaller / Reset. Or hold **⌘** and scroll on the lyrics. |
 | **Lyrics Timing ▸** | Words running ahead of or behind the music (a different edit, an intro)? Slide them earlier or later, up to 3 s. Back to normal when the song changes. |
 | **Prefer Romanized Lyrics** | When lrclib has a song both in its own script (Devanagari, Arabic, Hangul…) and in Latin letters, take the Latin ones. Off unless you turn it on. |
-| **YouTube in Browser** | Lyrics for a song playing in a Chrome, Dia, Arc, Brave, Edge or Vivaldi tab. Off until you turn it on (see above). |
+| **Other Players** | Lyrics for whatever macOS shows as Now Playing: YouTube in any browser, YouTube Music, Apple Music… On by default. |
+| **YouTube in Browser (exact)** | Reads a YouTube tab itself for exact sync. Off until you turn it on; needs the browser's permission (see above). |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through to what's underneath. |
 | **Reset Position** | Back to the bottom-centre of the screen. |
 | **Launch at Login** | Starts Overlyric when you log in (needs the app in Applications). |
