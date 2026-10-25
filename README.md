@@ -61,8 +61,8 @@ in any tab, front or back. Two one-time switches:
 
 It reads the video's title, channel and YouTube's own "Music" card, tries the likely title/artist splits at
 lrclib and keeps the synced lyrics whose title and length match the video. Official audio, lyric videos and
-YouTube Music match best. A music video with a long intro runs early: **Lyrics Timing ▸** nudges it, remembered
-per video. Videos that aren't songs show nothing at all. If Spotify and YouTube both play, whichever started
+YouTube Music match best. A music video with a long intro runs early: **Lyrics Timing ▸** slides it into place.
+Videos that aren't songs show nothing at all. If Spotify and YouTube both play, whichever started
 last wins. Only YouTube tabs are read, and only while the switch is on.
 
 ### About the warnings (why they appear, and why it's fine)
@@ -95,7 +95,7 @@ last wins. Only YouTube tabs are read, and only while the switch is on.
 | **Lyrics Font ▸** | **Rounded** *(default)*, **Serif**, **Poster**, **Script**, **Chic**, **Retro** or **Notebook** (below). Hover to try, click to keep. |
 | **Lyrics Colour ▸** | **Auto** (colourful, always readable on what's behind), **Match album artwork**, 9 presets, or **Custom…**. Hover a preset to try it. |
 | **Text Size ▸** | A live slider (14–160 pt), Bigger / Smaller / Reset. Or hold **⌘** and scroll on the lyrics. |
-| **Lyrics Timing ▸** | Words running ahead of or behind the music (a different edit, an intro)? Nudge them earlier or later by ½ s or 2 s. Remembered per song. |
+| **Lyrics Timing ▸** | Words running ahead of or behind the music (a different edit, an intro)? Slide them earlier or later, up to 3 s. Back to normal when the song changes. |
 | **Prefer Romanized Lyrics** | When lrclib has a song both in its own script (Devanagari, Arabic, Hangul…) and in Latin letters, take the Latin ones. Off unless you turn it on. |
 | **YouTube in Browser** | Lyrics for a song playing in a Chrome, Dia, Arc, Brave, Edge or Vivaldi tab. Off until you turn it on (see above). |
 | **Lock Position (click-through)** | Freezes the overlay and lets clicks pass through to what's underneath. |

@@ -7,9 +7,11 @@ needed:
   stopped at a screen edge while the pointer carried on; it now stays open for the whole drag and the words
   follow the monitor the pointer is on. Verified by code reading and the contributor's three-display test
   (one display here).
-- **Lyrics Timing ▸** (#3): nudge a song's words later or earlier by ½ s or 2 s, remembered per song
-  (`overlyric.timing`). Applied at once through the settings refresh. Known nits: no cap on the nudge; the
-  encore offer uses the nudged clock.
+- **Lyrics Timing ▸** (#3, reshaped): a live slider from −3 s (earlier) to +3 s (later) with a tick per
+  second, the words moving as you drag, plus Reset. The nudge is not remembered: it goes back to 0 as soon
+  as the song changes (few songs need it, and the next one won't). The PR as submitted had ½ s / 2 s steps
+  remembered per song in UserDefaults; that store is removed (and cleared on launch). The encore offer uses
+  the nudged clock (a few seconds at most now).
 - **Prefer Romanized Lyrics** (#4): a Latin-script lrclib record wins when one sits within the length
   tolerance. Shipped **off by default** (the PR had it on): on by default would have flipped every Hindi/Urdu
   song with a romanized twin to Latin letters, and the per-preference cache key re-fetches every cached song
@@ -23,10 +25,16 @@ needed:
   instead of blanking the lyrics (cleared after three in a row); a tab whose video isn't ready is skipped;
   polling 1 s / 2 s / 5 s (no YouTube tab) / 20 s (overlay off); at most three (title, artist) readings per
   video and a search hit must carry the guessed title (a duration alone picked any song of that length);
-  the automatic `[offset:]` shift is gone (Lyrics Timing is the per-video fix); parser: apostrophes aren't
+  the automatic `[offset:]` shift is gone (Lyrics Timing is the fix); parser: apostrophes aren't
   quotes, "Video Games" and "Hindi Zahra" survive, band names with "&" stay whole, four guesses at most;
   a video shows nothing until its lyrics are found. Status copy names the browser.
-- Verified: VERIFY_PLACEHOLDER
+- Verified: build; 74 unit tests (title parser, the matcher's title rule, romanized preference); the style
+  harness (Rounded) passes every check; Spotify lyrics live on this build (several songs found on 23 Oct).
+  YouTube in Browser live on the dev Mac with Dia: Automation granted, Dia's window and its 61–63 tabs read
+  every poll, and opening a YouTube tab made Dia answer that "Allow JavaScript from Apple Events" is off,
+  with the menu showing the hint for it (23 Oct, 22:18). A song with that switch on has not been watched yet,
+  so lyrics actually floating for a YouTube video is the one unverified step. The timing slider and the
+  YouTube menu row were built, not clicked. Chrome, Arc, Brave, Edge and Vivaldi were not tried here.
 
 
 ## 1.3.2 (2026-10-23)

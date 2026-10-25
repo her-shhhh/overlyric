@@ -218,6 +218,7 @@ final class LyricsController {
             currentTrackKey = key
             lyrics = nil
             lastLineShown = nil
+            timingNudge = 0                              // a nudge belongs to the song it was made for
             fetchGeneration += 1
             fetchTask?.cancel()
             retryTimer?.invalidate()
@@ -280,12 +281,19 @@ final class LyricsController {
 
     // MARK: Timing
 
-    /// Seconds the current song's lyrics are shifted later (negative: earlier) by the Lyrics Timing menu.
-    var timingNudge: TimeInterval {
-        get { currentTrackKey.map(settings.timing(for:)) ?? 0 }
-        set { if let key = currentTrackKey { settings.setTiming(newValue, for: key) } }
-    }
+    /// Seconds the current song's lyrics are shifted later (negative: earlier) by the Lyrics Timing slider.
+    /// Not remembered: it goes back to 0 as soon as the song changes (few songs need it, and the next one won't).
+    private(set) var timingNudge: TimeInterval = 0
+    static let maxTimingNudge: TimeInterval = 3
     var hasSongForTiming: Bool { currentTrackKey != nil && phase == .loaded }
+
+    /// Slides the current song's lyrics by `seconds` (clamped to ±3 s) and shows the change at once.
+    func setTimingNudge(_ seconds: TimeInterval) {
+        let clamped = min(max(seconds, -Self.maxTimingNudge), Self.maxTimingNudge)
+        guard clamped != timingNudge else { return }
+        timingNudge = clamped
+        refresh()
+    }
 
     /// Where the lyrics are, in song time: the player's position minus the nudge.
     private func lyricPosition(_ snap: PlaybackSnapshot, at now: Date) -> TimeInterval {

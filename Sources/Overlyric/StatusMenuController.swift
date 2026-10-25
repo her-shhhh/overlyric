@@ -31,10 +31,9 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private var previewWork: [ObjectIdentifier: DispatchWorkItem] = [:]
     private let lockItem = NSMenuItem(title: "Lock Position (click-through)", action: #selector(toggleLock), keyEquivalent: "")
     private let timingStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private let timingEarlier = NSMenuItem(title: "Earlier by ½ s", action: #selector(timingEarlierClicked), keyEquivalent: "")
-    private let timingLater = NSMenuItem(title: "Later by ½ s", action: #selector(timingLaterClicked), keyEquivalent: "")
-    private let timingEarlierMore = NSMenuItem(title: "Earlier by 2 s", action: #selector(timingEarlierMoreClicked), keyEquivalent: "")
-    private let timingLaterMore = NSMenuItem(title: "Later by 2 s", action: #selector(timingLaterMoreClicked), keyEquivalent: "")
+    private let timingSlider = NSSlider(value: 0, minValue: -LyricsController.maxTimingNudge,
+                                        maxValue: LyricsController.maxTimingNudge, target: nil, action: nil)
+    private let timingValueLabel = NSTextField(labelWithString: "")
     private let timingReset = NSMenuItem(title: "Reset Timing", action: #selector(timingResetClicked), keyEquivalent: "")
     private let launchItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     /// A little secret: holding ⌥ turns "Launch at Login" into this switch.
@@ -136,18 +135,18 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         sizeMenu.addItem(hint)
         menu.addItem(Self.submenuItem(sizeMenu))
 
-        // Lyrics Timing: a per-song nudge for when the words run ahead of or behind the music (a music
-        // video with an intro, a different edit).
+        // Lyrics Timing: a slider for when the words run ahead of or behind the music (a different edit, a
+        // video with an intro). It forgets itself when the song changes.
         let timingMenu = NSMenu(title: "Lyrics Timing")
+        timingMenu.autoenablesItems = false
         timingStatusItem.isEnabled = false
         timingMenu.addItem(timingStatusItem)
-        timingMenu.addItem(.separator())
-        for it in [timingLater, timingLaterMore, timingEarlier, timingEarlierMore] { it.target = self; timingMenu.addItem(it) }
+        timingMenu.addItem(makeTimingSliderItem())
         timingMenu.addItem(.separator())
         timingReset.target = self
         timingMenu.addItem(timingReset)
         timingMenu.addItem(.separator())
-        let timingHint = NSMenuItem(title: "Words too early? Make them later. Remembered per song.", action: nil, keyEquivalent: "")
+        let timingHint = NSMenuItem(title: "Back to normal when the song changes", action: nil, keyEquivalent: "")
         timingHint.isEnabled = false
         timingMenu.addItem(timingHint)
         menu.addItem(Self.submenuItem(timingMenu))
@@ -254,6 +253,48 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         if size != settings.fontSize { settings.fontSize = size }
     }
 
+    /// A live slider inside the Lyrics Timing submenu: earlier on the left, later on the right, a tick per
+    /// second, the words move as you drag.
+    private func makeTimingSliderItem() -> NSMenuItem {
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 262, height: 38))
+        let earlier = NSTextField(labelWithString: "earlier")
+        earlier.font = .systemFont(ofSize: 11)
+        earlier.textColor = .secondaryLabelColor
+        earlier.alignment = .right
+        earlier.frame = NSRect(x: 8, y: 12, width: 44, height: 16)
+        timingSlider.frame = NSRect(x: 56, y: 6, width: 122, height: 26)
+        timingSlider.isContinuous = true
+        timingSlider.numberOfTickMarks = Int(2 * LyricsController.maxTimingNudge) + 1
+        timingSlider.tickMarkPosition = .below
+        timingSlider.allowsTickMarkValuesOnly = false
+        timingSlider.target = self
+        timingSlider.action = #selector(timingSliderChanged(_:))
+        let later = NSTextField(labelWithString: "later")
+        later.font = .systemFont(ofSize: 11)
+        later.textColor = .secondaryLabelColor
+        later.frame = NSRect(x: 182, y: 12, width: 34, height: 16)
+        timingValueLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        timingValueLabel.textColor = .secondaryLabelColor
+        timingValueLabel.alignment = .right
+        timingValueLabel.frame = NSRect(x: 212, y: 12, width: 42, height: 16)
+        for v in [earlier, timingSlider, later, timingValueLabel] { container.addSubview(v) }
+        let item = NSMenuItem()
+        item.view = container
+        return item
+    }
+
+    /// "+1.5 s", "−0.5 s" or "0 s".
+    private static func timingText(_ seconds: TimeInterval) -> String {
+        abs(seconds) < 0.05 ? "0 s" : String(format: "%@%.1f s", seconds > 0 ? "+" : "−", abs(seconds))
+    }
+
+    @objc private func timingSliderChanged(_ sender: NSSlider) {
+        let seconds = (sender.doubleValue * 10).rounded() / 10
+        timingValueLabel.stringValue = Self.timingText(seconds)
+        controller.setTimingNudge(seconds)
+        timingReset.isEnabled = abs(seconds) >= 0.05
+    }
+
     private static let icon: NSImage? = {
         let image = NSImage(systemSymbolName: "music.mic", accessibilityDescription: "Overlyric")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .medium))
@@ -297,10 +338,12 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let nudge = controller.timingNudge
         let canNudge = controller.hasSongForTiming
         timingStatusItem.title = !canNudge ? "No song with lyrics right now"
-            : abs(nudge) < 0.01 ? "Lyrics on time (as found)"
-            : String(format: "Lyrics shifted %@%.1f s %@", nudge > 0 ? "+" : "−", abs(nudge), nudge > 0 ? "later" : "earlier")
-        for it in [timingLater, timingLaterMore, timingEarlier, timingEarlierMore] { it.isEnabled = canNudge }
-        timingReset.isEnabled = canNudge && abs(nudge) >= 0.01
+            : abs(nudge) < 0.05 ? "Lyrics on time"
+            : String(format: "Lyrics %.1f s %@", abs(nudge), nudge > 0 ? "later" : "earlier")
+        timingSlider.doubleValue = nudge
+        timingSlider.isEnabled = canNudge
+        timingValueLabel.stringValue = Self.timingText(nudge)
+        timingReset.isEnabled = canNudge && abs(nudge) >= 0.05
 
         let mode = settings.colorMode
         autoItem.state = mode == .autoContrast ? .on : .off
@@ -459,11 +502,11 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         }
     }
 
-    @objc private func timingEarlierClicked() { controller.timingNudge -= 0.5 }
-    @objc private func timingLaterClicked() { controller.timingNudge += 0.5 }
-    @objc private func timingEarlierMoreClicked() { controller.timingNudge -= 2 }
-    @objc private func timingLaterMoreClicked() { controller.timingNudge += 2 }
-    @objc private func timingResetClicked() { controller.timingNudge = 0 }
+    @objc private func timingResetClicked() {
+        controller.setTimingNudge(0)
+        timingSlider.doubleValue = 0
+        timingValueLabel.stringValue = Self.timingText(0)
+    }
 
     @objc private func zoomIn() { settings.fontSize = settings.fontSize * 1.15 }
     @objc private func zoomOut() { settings.fontSize = settings.fontSize / 1.15 }

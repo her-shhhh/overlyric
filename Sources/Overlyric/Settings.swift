@@ -27,7 +27,9 @@ final class Settings {
     static let shared = Settings()
     private let d = UserDefaults.standard
 
-    private init() {}
+    private init() {
+        d.removeObject(forKey: "overlyric.timing")     // a pre-release build stored per-song nudges; they no longer persist
+    }
 
     static let minFontSize: CGFloat = 14
     static let maxFontSize: CGFloat = 160
@@ -45,7 +47,6 @@ final class Settings {
         static let style = "overlyric.style"
         static let font = "overlyric.font"
         static let easterEggs = "overlyric.easterEggs"
-        static let timing = "overlyric.timing"
         static let romanized = "overlyric.preferRomanized"
         static let youtube = "overlyric.youtubeInBrowser"
     }
@@ -108,19 +109,6 @@ final class Settings {
     var easterEggs: Bool {
         get { d.object(forKey: Key.easterEggs) as? Bool ?? true }
         set { d.set(newValue, forKey: Key.easterEggs); notify() }
-    }
-
-    /// Seconds the lyrics of one song are shifted later (negative: earlier), keyed by the song.
-    func timing(for key: String) -> TimeInterval {
-        (d.dictionary(forKey: Key.timing)?[key] as? NSNumber)?.doubleValue ?? 0
-    }
-
-    func setTiming(_ seconds: TimeInterval, for key: String) {
-        var all = (d.dictionary(forKey: Key.timing) as? [String: Double]) ?? [:]
-        if abs(seconds) < 0.01 { all.removeValue(forKey: key) } else { all[key] = seconds }
-        if all.count > 500 { all = Dictionary(uniqueKeysWithValues: Array(all.suffix(400))) }   // the odd stale song
-        d.set(all, forKey: Key.timing)
-        notify()
     }
 
     /// When a song has lyrics in both its own script and Latin letters, take the Latin ones.

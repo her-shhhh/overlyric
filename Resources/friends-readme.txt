@@ -73,8 +73,8 @@ USE IT
   play a song in any Chrome, Dia, Arc, Brave or Edge tab and the
   lyrics come up, if the video is a song and lrclib.net has it.
   Official audio, lyric videos and YouTube Music match best; a music
-  video with a long intro runs early (Lyrics Timing in the menu fixes
-  that, per video). Videos that aren't songs simply show nothing.
+  video with a long intro runs early (Lyrics Timing in the menu
+  slides it into place). Videos that aren't songs simply show nothing.
   Two things to allow, once: macOS asks whether Overlyric may control
   the browser (click Allow), and Chrome (also Brave, Edge) wants
   View > Developer > Allow JavaScript from Apple Events turned on.
